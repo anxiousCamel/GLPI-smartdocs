@@ -17,7 +17,7 @@
    - 6.5 [Guia de Configuração do Ambiente (Setup)](#65-guia-de-configuração-do-ambiente-setup)
    - 6.6 [Padrões de Código e Versionamento](#66-padrões-de-código-e-versionamento)
    - 6.7 [Inteligência Artificial](#67-inteligência-artificial)
-   - 6.8 [Documentação de Testes e Deploy](#68-documentação-de-testes-e-deploy)
+ - 6.8 [Documentação de Testes e Deploy](#68-documentação-de-testes-e-deploy)
 7. [Fluxo do Processo](#7-fluxo-do-processo)
 8. [Documentos de Referência](#8-documentos-de-referência)
 9. [Distribuição](#9-distribuição)
