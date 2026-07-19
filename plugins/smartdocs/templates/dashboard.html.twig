@@ -1,0 +1,150 @@
+{# SmartDocs — Dashboard do plugin #}
+
+<div class="container-fluid py-3">
+
+    {# Cabeçalho #}
+    <div class="row mb-4">
+        <div class="col">
+            <h2 class="d-flex align-items-center gap-2">
+                <i class="ti ti-file-description"></i> SmartDocs
+                <span class="badge bg-blue-lt ms-2">v{{ plugin_version }}</span>
+            </h2>
+            <p class="text-muted mb-0">
+                {{ __('Documentação técnica, digitalização inteligente e gestão de preventivas dentro do GLPI.', 'smartdocs') }}
+            </p>
+        </div>
+    </div>
+
+    {# Banner de boas-vindas (dismissível) #}
+    {% if show_welcome_banner %}
+    <div class="alert alert-info alert-dismissible mb-4" id="smartdocs-welcome-banner">
+        <div class="d-flex align-items-start gap-3">
+            <i class="ti ti-info-circle fs-2 flex-shrink-0"></i>
+            <div>
+                <h5 class="alert-title">{{ __('👋 Bem-vindo ao SmartDocs!', 'smartdocs') }}</h5>
+                <p class="mb-2">
+                    {{ __('O SmartDocs adiciona ao GLPI cinco módulos para documentação técnica, digitalização e gestão de preventivas. Complete o setup abaixo para começar.', 'smartdocs') }}
+                </p>
+                <div class="d-flex gap-2 flex-wrap">
+                    <a href="#smartdocs-setup-checklist" class="btn btn-sm btn-primary">
+                        {{ __('Ver checklist de setup', 'smartdocs') }}
+                    </a>
+                    <a href="{{ webdir }}/front/wikidocument.php" class="btn btn-sm btn-outline-info">
+                        {{ __('Ler tutoriais', 'smartdocs') }}
+                    </a>
+                </div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    </div>
+    {% endif %}
+
+    {# Checklist de setup #}
+    <div id="smartdocs-setup-checklist" class="mb-4">
+        {% if not checklist.all_ok %}
+            <div class="card border-warning">
+                <div class="card-header bg-warning text-dark d-flex align-items-center justify-content-between">
+                    <span>
+                        <i class="ti ti-alert-triangle me-2"></i>
+                        {{ __('Configuração pendente', 'smartdocs') }}
+                        <span class="badge bg-white text-dark ms-2">{{ checklist.pending_count }}/{{ checklist.total }}</span>
+                    </span>
+                    <button class="btn btn-sm btn-dark" type="button" data-bs-toggle="collapse" data-bs-target="#checklist-body">
+                        {{ __('Expandir/recolher', 'smartdocs') }}
+                    </button>
+                </div>
+                <div class="collapse show" id="checklist-body">
+                    <div class="list-group list-group-flush">
+                        {% for item in checklist.pending %}
+                            <div class="list-group-item list-group-item-action d-flex align-items-center gap-3">
+                                <span class="avatar bg-red-lt"><i class="ti ti-x text-danger"></i></span>
+                                <div class="flex-fill">
+                                    <div class="fw-bold">{{ item.label }}</div>
+                                    <div class="text-muted small">{{ item.message }}</div>
+                                </div>
+                                {% if item.action_url %}
+                                    <a href="{{ item.action_url }}" class="btn btn-sm btn-outline-primary">
+                                        {{ item.action_label }}
+                                    </a>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                        {% for item in checklist.ok %}
+                            <div class="list-group-item d-flex align-items-center gap-3 text-muted">
+                                <span class="avatar bg-green-lt"><i class="ti ti-check text-success"></i></span>
+                                <div>
+                                    <div>{{ item.label }}</div>
+                                    <div class="small">{{ item.message }}</div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        {% else %}
+            <div class="alert alert-success d-flex align-items-center gap-2">
+                <i class="ti ti-check"></i>
+                <span>{{ __('Tudo pronto! O SmartDocs está configurado e pronto para uso.', 'smartdocs') }}</span>
+            </div>
+        {% endif %}
+    </div>
+
+    {# Cards de status básico #}
+    <div class="row row-deck mb-4">
+        <div class="col-sm-6 col-lg-3">
+            <div class="card">
+                <div class="card-body">
+                    <div class="subheader">{{ __('Versão do GLPI', 'smartdocs') }}</div>
+                    <div class="h3 mb-1">{{ glpi_version }}</div>
+                    <span class="badge {{ glpi_supported ? 'bg-green-lt' : 'bg-red-lt' }}">
+                        {{ glpi_supported ? __('Compatível', 'smartdocs') : __('Incompatível', 'smartdocs') }}
+                    </span>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="card">
+                <div class="card-body">
+                    <div class="subheader">{{ __('Versão do PHP', 'smartdocs') }}</div>
+                    <div class="h3 mb-1">{{ php_version }}</div>
+                    <span class="badge {{ php_ok ? 'bg-green-lt' : 'bg-red-lt' }}">
+                        {{ php_ok ? __('OK', 'smartdocs') : __('Incompatível', 'smartdocs') }}
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Cards de módulos #}
+    <div class="row row-deck">
+        {% for module in modules %}
+            <div class="col-sm-6 col-lg-4">
+                <a class="card card-link" href="{{ module.url }}">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center gap-3">
+                            <span class="avatar bg-primary-lt">
+                                <i class="{{ module.icon }}"></i>
+                            </span>
+                            <div>
+                                <div class="fw-bold">{{ module.title }}</div>
+                                <div class="text-muted small">{{ module.description }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </a>
+            </div>
+        {% endfor %}
+    </div>
+
+    {# Rodapé com links úteis #}
+    <div class="mt-4 text-muted small">
+        <a href="{{ webdir }}/front/diagnostic.php">
+            <i class="ti ti-stethoscope me-1"></i>{{ __('Página de diagnóstico', 'smartdocs') }}
+        </a>
+        <span class="mx-2">|</span>
+        <a href="{{ webdir }}/front/config.setup.php">
+            <i class="ti ti-help me-1"></i>{{ __('Ajuda de instalação', 'smartdocs') }}
+        </a>
+    </div>
+
+</div>

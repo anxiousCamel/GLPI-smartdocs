@@ -76,8 +76,20 @@ echo "<div class='container-fluid py-3'>";
 echo "<h2 class='mb-4'><i class='ti ti-files'></i> " . __('Novo Documento PDF', 'smartdocs') . "</h2>";
 
 if ($templateOptions === []) {
-    echo "<div class='alert alert-info'>";
-    echo __('Nenhum template publicado disponível. Publique um template antes de criar documentos.', 'smartdocs');
+    echo "<div class='empty-state text-center py-5'>";
+    echo "<div class='empty-state-icon mb-3'>";
+    echo "<i class='ti ti-file-description text-muted' style='font-size: 4rem;'></i>";
+    echo "</div>";
+    echo "<h3 class='text-muted mb-2'>" . __('Nenhum template publicado', 'smartdocs') . "</h3>";
+    echo "<p class='text-muted mb-4'>";
+    echo __('Você precisa criar e publicar um template PDF antes de gerar documentos.', 'smartdocs');
+    echo "</p>";
+    echo "<a href='" . GlpiPlugin\SmartDocs\GlpiCompat\MenuHelper::frontUrl('pdftemplate.form.php') . "' class='btn btn-primary'>";
+    echo "<i class='ti ti-plus me-1'></i>" . __('Criar primeiro template', 'smartdocs');
+    echo "</a>";
+    echo "<a href='" . GlpiPlugin\SmartDocs\GlpiCompat\MenuHelper::frontUrl('smartdocs.php') . "' class='btn btn-outline-secondary ms-2'>";
+    echo "<i class='ti ti-help me-1'></i>" . __('Ver checklist de setup', 'smartdocs');
+    echo "</a>";
     echo "</div>";
 } else {
     $doc->showForm(0);

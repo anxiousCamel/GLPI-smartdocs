@@ -13,6 +13,45 @@
  */
 
 /**
+ * Exibe aviso no dashboard quando as dependências do Composer não estão instaladas.
+ * Chamado via DISPLAY_CENTRAL hook — output HTML direto na página central do GLPI.
+ */
+function plugin_smartdocs_warn_missing_deps(): void
+{
+    $plugin_dir = Plugin::getPhpDir('smartdocs');
+
+    echo '<div class="alert alert-important alert-danger d-flex align-items-start mx-3 my-2" role="alert">';
+    echo '<i class="fas fa-exclamation-triangle me-2 flex-shrink-0 mt-1"></i>';
+    echo '<div class="flex-fill">';
+    echo '<strong>SmartDocs</strong> — ' . __('Dependências PHP não instaladas', 'smartdocs') . '<br>';
+    echo '<p class="mb-2">';
+    echo __('O plugin SmartDocs requer as dependências do Composer para funcionar. Execute no terminal:', 'smartdocs');
+    echo '</p>';
+    echo '<pre class="bg-dark text-light p-2 rounded mb-2"><code>';
+    echo 'cd ' . htmlescape($plugin_dir) . "\n";
+    echo 'composer install --no-dev --optimize-autoloader';
+    echo '</code></pre>';
+    echo '<p class="mb-0">';
+    echo sprintf(
+        __('Depois recarregue o GLPI e acesse %s para continuar.', 'smartdocs'),
+        '<a href="' . Plugin::getWebDir('smartdocs', false) . '/front/config.setup.php" class="alert-link">' . __('Configuração do SmartDocs', 'smartdocs') . '</a>'
+    );
+    echo '</p>';
+    echo '</div>';
+    echo '</div>';
+}
+
+/**
+ * Stub necessário para o hook post_show_tab registrado quando deps estão ausentes.
+ *
+ * @param array<string, mixed> $params
+ */
+function plugin_smartdocs_warn_missing_deps_tab(array $params): void
+{
+    // Sem ação — hook registrado apenas para compatibilidade.
+}
+
+/**
  * Instalação: cria as tabelas do plugin e as configurações padrão.
  */
 function plugin_smartdocs_install(): bool

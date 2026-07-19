@@ -31,6 +31,7 @@ function plugin_smartdocs_run_install(): bool
 
     plugin_smartdocs_create_tables($DB, $migration);
     plugin_smartdocs_seed_default_configs($DB);
+    plugin_smartdocs_seed_wiki_articles($DB);
 
     // Permissões padrão: perfil Super-Admin recebe todos os direitos.
     if (class_exists(PermissionManager::class)) {
@@ -38,6 +39,13 @@ function plugin_smartdocs_run_install(): bool
     }
 
     $migration->executeMigration();
+
+    // Mensagem de orientação pós-instalação
+    \Session::addMessageAfterRedirect(
+        __('SmartDocs instalado com sucesso! Próximos passos: 1) Configure permissões em Administração → Perfis, 2) Acesse SmartDocs → Templates PDF para criar seu primeiro template.', 'smartdocs'),
+        true,
+        INFO
+    );
 
     return true;
 }
@@ -351,5 +359,150 @@ function plugin_smartdocs_seed_default_configs(DBmysql $DB): void
                 'date_mod' => $_SESSION['glpi_currenttime'] ?? date('Y-m-d H:i:s'),
             ]);
         }
+    }
+}
+
+/**
+ * Semeia artigos iniciais da Wiki para orientar o administrador.
+ * Idempotente: só insere se a categoria "SmartDocs — Ajuda" ainda não existe.
+ */
+function plugin_smartdocs_seed_wiki_articles(DBmysql $DB): void
+{
+    $now = $_SESSION['glpi_currenttime'] ?? date('Y-m-d H:i:s');
+
+    $exists = $DB->request([
+        'COUNT' => 'cnt',
+        'FROM'  => 'glpi_plugin_smartdocs_wiki_categories',
+        'WHERE' => ['name' => 'SmartDocs — Ajuda'],
+    ])->current()['cnt'] > 0;
+
+    if ($exists) {
+        return;
+    }
+
+    $DB->insert('glpi_plugin_smartdocs_wiki_categories', [
+        'name'                => 'SmartDocs — Ajuda',
+        'wiki_categories_id'  => 0,
+        'entities_id'         => 0,
+        'is_recursive'        => 1,
+    ]);
+    $category_id = $DB->insertId();
+
+    $articles = [
+        [
+            'name'    => 'Primeiros Passos',
+            'content' => <<<'MD'
+## Bem-vindo ao SmartDocs
+
+O SmartDocs adiciona ao GLPI quatro módulos:
+
+- **Templates PDF** — crie layouts visuais posicionando campos sobre um PDF base
+- **Documentos** — gere PDFs preenchidos vinculados a equipamentos e chamados
+- **Scanner OCR** — leia QR Code, código de barras ou etiquetas pela câmera
+- **Wiki** — base de conhecimento interna (este módulo)
+- **Biblioteca Técnica** — manuais, POPs e contratos vinculados a qualquer objeto
+
+### Por onde começar
+
+1. Vá em **SmartDocs → Templates PDF** e crie seu primeiro template
+2. Faça upload de um PDF base e posicione os campos no editor visual
+3. Publique o template
+4. Em **SmartDocs → Documentos**, crie um documento a partir do template
+5. Preencha os campos e gere o PDF
+MD,
+        ],
+        [
+            'name'    => 'Templates PDF — Como usar',
+            'content' => <<<'MD'
+## Templates PDF
+
+Um template define o layout de um documento: qual PDF usar como base e onde ficam os campos preenchíveis.
+
+### Criando um template
+
+1. **SmartDocs → Templates PDF → Adicionar**
+2. Dê um nome e faça upload do PDF base (máx. 20 MB por padrão)
+3. No editor visual, arraste campos para as posições desejadas
+4. Tipos de campo: `texto`, `imagem`, `assinatura`, `checkbox`
+5. Para campos repetidos por equipamento, defina o escopo como `item`
+6. Clique **Publicar** — somente templates publicados geram documentos
+
+### Binding keys
+
+Campos com `binding_key` são preenchidos automaticamente a partir dos dados do equipamento no GLPI.
+
+Exemplos: `computer.name`, `computer.serial`, `computer.location`.
+MD,
+        ],
+        [
+            'name'    => 'Scanner OCR — Como usar',
+            'content' => <<<'MD'
+## Scanner OCR
+
+O scanner aparece nos formulários de **Computadores, Monitores, Impressoras, Periféricos, Equipamentos de Rede e Telefones**.
+
+### Como ativar
+
+O usuário precisa da permissão **Uso de OCR** no perfil SmartDocs (**Administração → Perfis → SmartDocs**).
+
+### Usando o scanner
+
+1. Abra o formulário de qualquer ativo compatível
+2. Clique no botão de câmera que aparece no formulário
+3. Aponte para QR Code, código de barras ou etiqueta com texto
+4. O sistema identifica o equipamento e pré-preenche os campos
+
+### Configuração do OCR
+
+Em **SmartDocs → Configurações**:
+
+| Opção | Descrição |
+|-------|-----------|
+| `browser` | OCR via WebAssembly no navegador (padrão, sem dependências no servidor) |
+| `tesseract` | Tesseract instalado no servidor (mais preciso para textos longos) |
+| `api` | Serviço externo via URL + chave de API |
+MD,
+        ],
+        [
+            'name'    => 'Fila de PDF — Geração assíncrona',
+            'content' => <<<'MD'
+## Geração de PDF
+
+PDFs são gerados em fila assíncrona para não bloquear a interface.
+
+### Status de um documento
+
+| Status | Significado |
+|--------|-------------|
+| `DRAFT` | Em preenchimento |
+| `IN_PROGRESS` | Aguardando envio para fila |
+| `GENERATING` | Sendo processado pelo cron |
+| `GENERATED` | PDF disponível para download |
+| `ERROR` | Falha na geração — veja a mensagem de erro |
+
+### Configurar o cron
+
+O cron do GLPI precisa estar ativo. Configure em **Configuração → Tarefas automáticas → SmartDocsPdfQueue**.
+
+Intervalo recomendado: **2 minutos**.
+
+Para forçar execução manual: acesse a tarefa e clique **Executar agora**.
+MD,
+        ],
+    ];
+
+    foreach ($articles as $article) {
+        $DB->insert('glpi_plugin_smartdocs_wiki_documents', [
+            'name'                   => $article['name'],
+            'content'                => $article['content'],
+            'version'                => 1,
+            'wiki_categories_id'     => $category_id,
+            'entities_id'            => 0,
+            'is_recursive'           => 1,
+            'users_id_creator'       => 0,
+            'users_id_lastupdater'   => 0,
+            'date_creation'          => $now,
+            'date_mod'               => $now,
+        ]);
     }
 }

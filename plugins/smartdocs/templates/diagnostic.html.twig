@@ -1,0 +1,247 @@
+{# SmartDocs — Página de Diagnóstico #}
+
+<div class="container-fluid py-3">
+
+    <div class="row mb-4">
+        <div class="col">
+            <h2 class="d-flex align-items-center gap-2">
+                <i class="ti ti-stethoscope"></i>
+                {{ __('Diagnóstico do SmartDocs', 'smartdocs') }}
+            </h2>
+            <p class="text-muted mb-0">
+                {{ __('Verifique a saúde do plugin, versões, permissões e status dos serviços.', 'smartdocs') }}
+            </p>
+        </div>
+    </div>
+
+    {# Checklist resumido #}
+    <div class="row mb-4">
+        <div class="col">
+            {% if not checklist.all_ok %}
+                <div class="alert alert-warning">
+                    <i class="ti ti-alert-triangle me-2"></i>
+                    {{ __('Existem %d item(ns) pendente(s) de configuração.', 'smartdocs')|format(checklist.pending_count) }}
+                    <a href="{{ webdir }}/front/smartdocs.php" class="alert-link ms-2">
+                        {{ __('Ver no dashboard', 'smartdocs') }}
+                    </a>
+                </div>
+            {% else %}
+                <div class="alert alert-success">
+                    <i class="ti ti-check me-2"></i>
+                    {{ __('Todas as verificações passaram. O plugin está saudável.', 'smartdocs') }}
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="row row-deck mb-4">
+        {# Versões #}
+        <div class="col-sm-6 col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="ti ti-versions me-2"></i>{{ __('Versões', 'smartdocs') }}
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm table-borderless mb-0">
+                        <tr>
+                            <td class="text-muted">{{ __('SmartDocs', 'smartdocs') }}</td>
+                            <td class="text-end fw-bold">{{ plugin_version }}</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">{{ __('GLPI', 'smartdocs') }}</td>
+                            <td class="text-end">
+                                <span class="badge {{ glpi_supported ? 'bg-green-lt' : 'bg-red-lt' }}">
+                                    {{ glpi_version }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">{{ __('PHP', 'smartdocs') }}</td>
+                            <td class="text-end">
+                                <span class="badge {{ php_ok ? 'bg-green-lt' : 'bg-red-lt' }}">
+                                    {{ php_version }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">{{ __('Diretório', 'smartdocs') }}</td>
+                            <td class="text-end"><code class="small">{{ plugin_dir }}</code></td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">{{ __('Composer', 'smartdocs') }}</td>
+                            <td class="text-end">
+                                <span class="badge {{ composer_ok ? 'bg-green-lt' : 'bg-red-lt' }}">
+                                    {{ composer_ok ? __('OK', 'smartdocs') : __('Faltando', 'smartdocs') }}
+                                </span>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        {# Extensões PHP #}
+        <div class="col-sm-6 col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="ti ti-puzzle me-2"></i>{{ __('Extensões PHP', 'smartdocs') }}
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <div class="list-group list-group-flush">
+                        {% for ext, loaded in exts %}
+                            <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                                <span>{{ ext }}</span>
+                                <span class="badge {{ loaded ? 'bg-green-lt' : 'bg-red-lt' }}">
+                                    {{ loaded ? __('Carregada', 'smartdocs') : __('Ausente', 'smartdocs') }}
+                                </span>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# Contadores #}
+        <div class="col-sm-6 col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="ti ti-chart-bar me-2"></i>{{ __('Contadores', 'smartdocs') }}
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm table-borderless mb-0">
+                        <tr>
+                            <td class="text-muted">{{ __('Templates', 'smartdocs') }}</td>
+                            <td class="text-end fw-bold">{{ counters.templates }}</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">{{ __('Documentos', 'smartdocs') }}</td>
+                            <td class="text-end fw-bold">{{ counters.documents }}</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">{{ __('Artigos Wiki', 'smartdocs') }}</td>
+                            <td class="text-end fw-bold">{{ counters.wiki }}</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">{{ __('Arquivos técnicos', 'smartdocs') }}</td>
+                            <td class="text-end fw-bold">{{ counters.library }}</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">{{ __('Resultados OCR', 'smartdocs') }}</td>
+                            <td class="text-end fw-bold">{{ counters.ocr_results }}</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">{{ __('Jobs pendentes', 'smartdocs') }}</td>
+                            <td class="text-end fw-bold {{ counters.pending_jobs > 0 ? 'text-warning' : '' }}">
+                                {{ counters.pending_jobs }}
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        {# Cron #}
+        <div class="col-sm-6 col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="ti ti-clock me-2"></i>{{ __('Tarefa SmartDocsPdfQueue', 'smartdocs') }}
+                    </h3>
+                </div>
+                <div class="card-body">
+                    {% if cron_info.exists %}
+                        <table class="table table-sm table-borderless mb-0">
+                            <tr>
+                                <td class="text-muted">{{ __('Estado', 'smartdocs') }}</td>
+                                <td class="text-end">
+                                    {% set state_labels = {
+                                        0: __('Esperando', 'smartdocs'),
+                                        1: __('Rodando', 'smartdocs'),
+                                        2: __('Desabilitado', 'smartdocs'),
+                                    } %}
+                                    <span class="badge {{ cron_info.state == 0 ? 'bg-green-lt' : (cron_info.state == 1 ? 'bg-blue-lt' : 'bg-red-lt') }}">
+                                        {{ state_labels[cron_info.state] ?? __('Desconhecido', 'smartdocs') }}
+                                    </span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">{{ __('Última execução', 'smartdocs') }}</td>
+                                <td class="text-end">{{ cron_info.lastrun ?: __('Nunca', 'smartdocs') }}</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">{{ __('Frequência', 'smartdocs') }}</td>
+                                <td class="text-end">{{ cron_info.frequency }} {{ __('segundos', 'smartdocs') }}</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">{{ __('Itemtype', 'smartdocs') }}</td>
+                                <td class="text-end"><code class="small">{{ cron_info.itemtype }}</code></td>
+                            </tr>
+                        </table>
+                    {% else %}
+                        <div class="alert alert-danger mb-0">
+                            <i class="ti ti-alert-circle me-2"></i>
+                            {{ __('Tarefa SmartDocsPdfQueue não encontrada. Reinstale o plugin.', 'smartdocs') }}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {# Permissões por perfil #}
+        <div class="col-sm-12 col-lg-8">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="ti ti-shield me-2"></i>{{ __('Permissões por Perfil', 'smartdocs') }}
+                    </h3>
+                </div>
+                <div class="card-body">
+                    {% if profile_summary %}
+                        <table class="table table-sm table-striped mb-0">
+                            <thead>
+                                <tr>
+                                    <th>{{ __('Perfil', 'smartdocs') }}</th>
+                                    <th>{{ __('Direitos (bits)', 'smartdocs') }}</th>
+                                    <th>{{ __('Resumo', 'smartdocs') }}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for p in profile_summary %}
+                                    <tr>
+                                        <td>{{ p.profile_name }}</td>
+                                        <td><code>{{ p.rights }}</code></td>
+                                        <td>
+                                            {% if p.rights == 0 %}
+                                                <span class="badge bg-red-lt">{{ __('Sem acesso', 'smartdocs') }}</span>
+                                            {% else %}
+                                                <span class="badge bg-green-lt">{{ __('Configurado', 'smartdocs') }}</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <div class="alert alert-warning mb-0">
+                            <i class="ti ti-alert-triangle me-2"></i>
+                            {{ __('Nenhum perfil possui direitos do SmartDocs. Configure em Administração → Perfis.', 'smartdocs') }}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-2">
+        <a href="{{ webdir }}/front/smartdocs.php" class="btn btn-outline-secondary">
+            <i class="ti ti-arrow-left me-1"></i>{{ __('Voltar ao dashboard', 'smartdocs') }}
+        </a>
+    </div>
+
+</div>
