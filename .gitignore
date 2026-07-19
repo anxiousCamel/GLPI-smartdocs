@@ -1,0 +1,16 @@
+# Ambiente
+.env
+
+# Dependências PHP
+plugins/smartdocs/vendor/
+
+# Assets compilados
+plugins/smartdocs/js/dist/
+plugins/smartdocs/css/dist/
+
+# Node
+plugins/smartdocs/node_modules/
+
+# OS
+.DS_Store
+Thumbs.db

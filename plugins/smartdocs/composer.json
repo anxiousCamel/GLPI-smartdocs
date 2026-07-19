@@ -1,0 +1,39 @@
+{
+  "name": "smartdocs/glpi-plugin-smartdocs",
+  "description": "SmartDocs — documentação técnica, digitalização inteligente (OCR/QR) e gestão de preventivas para GLPI 10.x/11.x",
+  "type": "glpi-plugin",
+  "license": "GPL-3.0-or-later",
+  "authors": [
+    {
+      "name": "Luiz Belmonte"
+    }
+  ],
+  "require": {
+    "php": ">=8.2",
+    "setasign/fpdi": "^2.5",
+    "tecnickcom/tcpdf": "^6.7",
+    "thiagoalessio/tesseract_ocr": "^2.12",
+    "smalot/pdfparser": "^2.0",
+    "intervention/image": "^3.0"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^11"
+  },
+  "autoload": {
+    "psr-4": {
+      "GlpiPlugin\\SmartDocs\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "GlpiPlugin\\SmartDocs\\Tests\\": "tests/"
+    }
+  },
+  "config": {
+    "optimize-autoloader": true,
+    "sort-packages": true
+  },
+  "scripts": {
+    "test": "phpunit"
+  }
+}
