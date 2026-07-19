@@ -3,7 +3,11 @@
     "allow": [
       "Bash(rtk find:*)",
       "Bash(docker compose:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "PowerShell(Get-Process *)",
+      "PowerShell(Get-Service *)",
+      "PowerShell(docker info *)",
+      "PowerShell(npm cache *)"
     ]
   }
 }

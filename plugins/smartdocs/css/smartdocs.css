@@ -1,0 +1,29 @@
+/**
+ * SmartDocs — Estilos do plugin
+ */
+
+.smartdocs-editor {
+  min-height: 600px;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+}
+
+.smartdocs-wizard .progress {
+  height: 1.5rem;
+}
+
+.smartdocs-wizard .nav-tabs {
+  border-bottom: 1px solid #dee2e6;
+}
+
+.smartdocs-wizard .nav-tabs .nav-link {
+  border: 1px solid transparent;
+  border-top-left-radius: 4px;
+  border-top-right-radius: 4px;
+}
+
+.smartdocs-wizard .nav-tabs .nav-link.active {
+  background-color: #fff;
+  border-color: #dee2e6 #dee2e6 #fff;
+}

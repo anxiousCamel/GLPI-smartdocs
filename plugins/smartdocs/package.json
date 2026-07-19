@@ -1,0 +1,18 @@
+{
+  "name": "smartdocs-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch --mode development",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "konva": "^9.3.14",
+    "pdfjs-dist": "^4.5.136"
+  },
+  "devDependencies": {
+    "vite": "^5.3.4"
+  }
+}

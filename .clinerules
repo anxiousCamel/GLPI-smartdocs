@@ -1,0 +1,66 @@
+# GLPI Plugin Expert — Skill ativa para este projeto
+
+Este projeto é um **plugin GLPI**. A base de conhecimento completa está em `.skills/glpi-plugin-expert/`.
+
+## Protocolo obrigatório antes de qualquer tarefa GLPI
+
+1. **Identifique a tarefa** e leia o documento correspondente na tabela abaixo usando `read_file`. Não responda de memória — os padrões GLPI mudam entre versões e a KB é a fonte de verdade.
+2. **Identifique a versão-alvo.** Se não informada, pergunte. GLPI 10.x → `GLPI10/`. GLPI 11.x → leia `GLPI10/` + `.skills/glpi-plugin-expert/GLPI11/00-Migration-Guide.md`.
+3. **Antes de gerar código** → leia `.skills/glpi-plugin-expert/GLPI10/99-Rules.md` + o template relevante em `.skills/glpi-plugin-expert/Templates/`.
+4. **Antes de entregar código** → valide contra `.skills/glpi-plugin-expert/Checklists/PluginChecklist.md` e `Checklists/SecurityChecklist.md`.
+5. Para tarefas específicas (review, bugfix, refactor, migração, segurança) → leia o prompt operacional em `.skills/glpi-plugin-expert/PROMPTS/`.
+
+## Mapa de navegação — quando ler o quê
+
+| Tarefa / dúvida | Arquivo a ler |
+|---|---|
+| Arquitetura interna do GLPI (bootstrap, camadas, request flow) | `GLPI10/00-Architecture.md` |
+| Criar plugin do zero, setup.php, hook.php, estrutura de pastas | `GLPI10/01-Plugin-Structure.md` |
+| Install / update / uninstall / enable / disable | `GLPI10/02-Lifecycle.md` |
+| Hooks (item_add, menu, css/js, config) | `GLPI10/03-Hooks.md` |
+| Permissões, ACL, Session::haveRight, direitos custom | `GLPI10/04-Rights.md` |
+| Query builder, $DB->request, tabelas, nomes | `GLPI10/05-Database.md` |
+| Criar/alterar tabelas com Migration | `GLPI10/06-Migrations.md` |
+| Itemtypes persistentes (CRUD, forms, tabs) | `GLPI10/07-CommonDBTM.md` |
+| UI base — tabs, menus (CommonGLPI) | `GLPI10/08-CommonGLPI.md` |
+| Listas de seleção / dicionários (CommonDropdown) | `GLPI10/09-CommonDropdown.md` |
+| Search Options, listas, filtros, colunas | `GLPI10/10-Search.md` |
+| Ações em massa (MassiveAction) | `GLPI10/11-MassiveActions.md` |
+| Endpoints AJAX | `GLPI10/12-AJAX.md` |
+| front/, ajax/, URLs, roteamento | `GLPI10/13-Routing.md` |
+| API REST do GLPI e extensões | `GLPI10/14-REST-API.md` |
+| Tarefas agendadas (CronTask) | `GLPI10/15-Cron.md` |
+| Notificações (templates, targets, eventos) | `GLPI10/16-Notifications.md` |
+| Inventário nativo / agentes / regras | `GLPI10/17-Inventory.md` |
+| Multi-entidade e recursividade | `GLPI10/18-Entities.md` |
+| Perfis e direitos na UI | `GLPI10/19-Profiles.md` |
+| Templates Twig | `GLPI10/20-Twig.md` |
+| Vue.js no GLPI | `GLPI10/21-Vue.md` |
+| Tabler (UI framework) | `GLPI10/22-Tabler.md` |
+| Composer no plugin | `GLPI10/23-Composer.md` |
+| PSR-4 e namespaces GlpiPlugin\ | `GLPI10/24-Namespaces.md` |
+| Testes (PHPUnit, CI) | `GLPI10/25-Testing.md` |
+| Debug, logs, profiling | `GLPI10/26-Debugging.md` |
+| Boas práticas | `GLPI10/27-BestPractices.md` |
+| Anti-padrões — o que nunca fazer | `GLPI10/28-AntiPatterns.md` |
+| Performance | `GLPI10/29-Performance.md` |
+| Segurança (XSS, SQLi, CSRF, upload, rights) | `GLPI10/30-Security.md` |
+| Compatibilidade 10.x / 11.x no mesmo código | `GLPI10/31-Compatibility.md` |
+| Exemplos completos comentados | `GLPI10/32-Examples.md` |
+| **Regras obrigatórias** (leia sempre antes de gerar código) | `GLPI10/99-Rules.md` |
+| Migrar plugin 10.x → 11.x | `GLPI11/00-Migration-Guide.md` |
+
+Todos os caminhos acima são relativos a `.skills/glpi-plugin-expert/`.
+
+## Regras inegociáveis (resumo — versão completa em GLPI10/99-Rules.md)
+
+1. **Nunca modifica arquivos do core do GLPI.**
+2. Usa apenas APIs públicas; nunca depende de internals não documentados sem marcar o risco.
+3. Composer + PSR-4 + namespace `GlpiPlugin\<Nome>\` + tipagem estrita + `__()` em toda string visível.
+4. Implementa install, update (com `Migration`), uninstall limpo (drop de tabelas, rights, crons, notificações).
+5. `csrf_compliant` declarado; CSRF validado em todo POST.
+6. Todo `front/` e `ajax/` checa `Session::checkRight` / `canView` / `canCreate`.
+7. Exclusivamente query builder (`$DB->request([...])`). SQL raw proibido.
+8. Toda saída escapada (Twig auto-escape; `htmlescape()` fora do Twig no GLPI 11).
+9. SOLID, sem duplicação, extensibilidade prioritária.
+10. Compatível com GLPI 10.x e escrito para minimizar custo de migração para 11.x.

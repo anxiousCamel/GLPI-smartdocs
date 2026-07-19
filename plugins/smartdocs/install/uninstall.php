@@ -34,6 +34,8 @@ function plugin_smartdocs_run_uninstall(): bool
 function plugin_smartdocs_drop_tables(DBmysql $DB): void
 {
     $tables = [
+        'glpi_plugin_smartdocs_technical_files',
+        'glpi_plugin_smartdocs_equipment_assignments',
         'glpi_plugin_smartdocs_wiki_versions',
         'glpi_plugin_smartdocs_wiki_documents',
         'glpi_plugin_smartdocs_wiki_categories',

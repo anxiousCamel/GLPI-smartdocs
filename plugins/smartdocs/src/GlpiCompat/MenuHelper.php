@@ -109,10 +109,12 @@ final class MenuHelper
 
     /**
      * URL relativa à raiz web do GLPI para uma página do plugin.
+     *
+     * Usa Plugin::getWebDir() para compatibilidade com marketplace e GLPI 11.
      */
     public static function frontUrl(string $page): string
     {
-        return '/plugins/smartdocs/front/' . $page;
+        return \Plugin::getWebDir('smartdocs', false) . '/front/' . $page;
     }
 
     /**

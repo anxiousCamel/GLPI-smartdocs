@@ -29,7 +29,7 @@ function plugin_smartdocs_run_install(): bool
 
     $migration = new Migration(PLUGIN_SMARTDOCS_VERSION);
 
-    plugin_smartdocs_create_tables($DB);
+    plugin_smartdocs_create_tables($DB, $migration);
     plugin_smartdocs_seed_default_configs($DB);
 
     // Permissões padrão: perfil Super-Admin recebe todos os direitos.
@@ -44,13 +44,22 @@ function plugin_smartdocs_run_install(): bool
 
 /**
  * Cria as tabelas do plugin (ordem do Apêndice 14 do PROJETO.md).
+ *
+ * CREATE TABLE usa $DB->doQuery() com guarda tableExists() — padrão GLPI
+ * para DDL inicial. DML (seed) usa query builder exclusivamente.
  */
-function plugin_smartdocs_create_tables(DBmysql $DB): void
+function plugin_smartdocs_create_tables(DBmysql $DB, Migration $migration): void
 {
     $queries = plugin_smartdocs_table_definitions();
 
     foreach ($queries as $table => $query) {
-        if (!$DB->query($query)) {
+        if ($DB->tableExists($table)) {
+            continue;
+        }
+
+        $migration->displayMessage("Criando tabela {$table}");
+
+        if (!$DB->doQuery($query)) {
             throw new RuntimeException(
                 sprintf('Falha ao criar a tabela %s: %s', $table, $DB->error())
             );
@@ -272,6 +281,45 @@ function plugin_smartdocs_table_definitions(): array
                 UNIQUE KEY `uniq_doc_version` (`wiki_documents_id`, `version`)
             ) {$engine}
         ",
+
+        // 13. Vínculos de equipamentos a documentos (preventivas)
+        'glpi_plugin_smartdocs_equipment_assignments' => "
+            CREATE TABLE IF NOT EXISTS `glpi_plugin_smartdocs_equipment_assignments` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `pdf_documents_id` INT UNSIGNED NOT NULL,
+                `itemtype` VARCHAR(100) NOT NULL,
+                `items_id` INT UNSIGNED NOT NULL,
+                `item_index` INT UNSIGNED NOT NULL,
+                `non_binding_data` JSON NULL,
+                `removed_at` DATETIME NULL,
+                `date_creation` DATETIME NULL,
+                `date_mod` DATETIME NULL,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uniq_doc_item` (`pdf_documents_id`, `itemtype`, `items_id`, `removed_at`),
+                KEY `idx_document` (`pdf_documents_id`)
+            ) {$engine}
+        ",
+
+        // 14. Arquivos técnicos (biblioteca)
+        'glpi_plugin_smartdocs_technical_files' => "
+            CREATE TABLE IF NOT EXISTS `glpi_plugin_smartdocs_technical_files` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `name` VARCHAR(255) NOT NULL,
+                `description` TEXT NULL,
+                `file_documents_id` INT UNSIGNED NULL,
+                `type` ENUM('manual','pop','contract','warranty','other') NOT NULL DEFAULT 'other',
+                `linked_itemtype` VARCHAR(100) NULL,
+                `linked_items_id` INT UNSIGNED NULL,
+                `entities_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                `is_recursive` TINYINT NOT NULL DEFAULT 0,
+                `users_id_creator` INT UNSIGNED NULL,
+                `date_creation` DATETIME NULL,
+                `date_mod` DATETIME NULL,
+                PRIMARY KEY (`id`),
+                KEY `idx_linked_item` (`linked_itemtype`, `linked_items_id`),
+                KEY `idx_entities` (`entities_id`)
+            ) {$engine}
+        ",
     ];
 }
 
@@ -289,16 +337,19 @@ function plugin_smartdocs_seed_default_configs(DBmysql $DB): void
         'scanner_languages'     => 'eng+por',
     ];
 
-    $stmt = $DB->prepare(
-        "INSERT INTO `glpi_plugin_smartdocs_configs` (`name`, `value`, `date_mod`)
-         VALUES (?, ?, NOW())
-         ON DUPLICATE KEY UPDATE `name` = VALUES(`name`)"
-    );
-
     foreach ($defaults as $name => $value) {
-        $stmt->bind_param('ss', $name, $value);
-        $stmt->execute();
-    }
+        $exists = $DB->request([
+            'COUNT' => 'cnt',
+            'FROM'  => 'glpi_plugin_smartdocs_configs',
+            'WHERE' => ['name' => $name],
+        ])->current()['cnt'] > 0;
 
-    $stmt->close();
+        if (!$exists) {
+            $DB->insert('glpi_plugin_smartdocs_configs', [
+                'name'     => $name,
+                'value'    => $value,
+                'date_mod' => $_SESSION['glpi_currenttime'] ?? date('Y-m-d H:i:s'),
+            ]);
+        }
+    }
 }

@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  php:
+    name: PHP Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php: ['8.2', '8.3']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: gd, mbstring, curl, json, zip, pdo, pdo_mysql
+          coverage: xdebug
+
+      - name: Install Composer dependencies
+        run: cd plugins/smartdocs && composer install --no-dev --optimize-autoloader
+
+      - name: Run PHP CodeSniffer
+        run: cd plugins/smartdocs && vendor/bin/phpcs --standard=PSR12 src/ ajax/ front/
+
+      - name: Run PHPUnit
+        run: cd plugins/smartdocs && vendor/bin/phpunit --testdox
+
+  frontend:
+    name: Frontend Tests & Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: plugins/smartdocs/pnpm-lock.yaml
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: cd plugins/smartdocs && pnpm install
+
+      - name: Run Vitest
+        run: cd plugins/smartdocs && pnpm vitest run
+
+      - name: Build assets
+        run: cd plugins/smartdocs && pnpm build
+
+  package:
+    name: Package Plugin
+    needs: [php, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build release ZIP
+        run: |
+          mkdir -p dist
+          cd plugins/smartdocs
+          zip -r ../../dist/smartdocs-plugin.zip . -x "node_modules/*" ".git/*" "tests/*" ".phpunit.cache/*"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: smartdocs-plugin
+          path: dist/smartdocs-plugin.zip

@@ -19,6 +19,9 @@ define('PLUGIN_SMARTDOCS_VERSION', '1.0.0');
 define('PLUGIN_SMARTDOCS_MIN_GLPI', '10.0.0');
 define('PLUGIN_SMARTDOCS_MAX_GLPI', '11.99.99');
 
+// CSRF compliance deve estar no escopo global para ativação via CLI.
+$PLUGIN_HOOKS['csrf_compliant']['smartdocs'] = true;
+
 /**
  * Metadados do plugin exigidos pelo GLPI.
  *
@@ -105,4 +108,12 @@ function plugin_smartdocs_init(): void
 
     // Aba de permissões na tela de perfis do GLPI.
     Plugin::registerClass(PermissionManager::class, ['addtabon' => 'Profile']);
+
+    // Scanner OCR: injeta botão de câmera nas telas de ativos
+    $PLUGIN_HOOKS['post_show_item']['smartdocs'] = 'plugin_smartdocs_postShowItem';
+
+    // Módulos JS do plugin (formato ES module)
+    $PLUGIN_HOOKS['add_javascript']['smartdocs'] = [
+        'js/scanner.bundle.js',
+    ];
 }

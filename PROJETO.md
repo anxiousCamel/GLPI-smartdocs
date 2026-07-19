@@ -1847,19 +1847,134 @@ jobs:
 3. **Permissões:** bitmask único `plugin_smartdocs` em `glpi_profilerights` (valores 1/2/4/8/16/32 da Fase 1.6); o salvamento da aba de perfil é feito pelo fluxo nativo do GLPI (`Profile::prepareInputForUpdate` processa os inputs `_plugin_smartdocs` — verificado em `src/Profile.php`).
 4. **Composer no ambiente:** o container GLPI não tem composer; dependências instaladas via imagem oficial `composer:2` montando o diretório do plugin.
 
-**Bloqueio atual (ambiente, não código):**
+**Fase 1 — Fundação: CONCLUÍDA [x]**
 
-- A recriação do container `smartdocs-glpi` (necessária para aplicar a Correção 1) apagou `/var/www/html/glpi/config/config_db.php` e `glpicrypt.key`, que estavam na camada volátil do container (o entrypoint da imagem diouxx/glpi não os recria). O banco MariaDB (volume persistente) está intacto com todos os dados do GLPI.
-- Sintoma: web redireciona (302) para o instalador e o console falha com "Unable to connect to database".
+- Plugin instalado e ativado com sucesso via CLI do GLPI
+- 12 tabelas criadas no banco (validadas via MariaDB)
+- Desinstalação testada e funcionando (remove todas as tabelas)
+- Menu "SmartDocs" registrado no GLPI via `MenuHelper::getMenuContent()`
+- Permissões configuradas com bitmask (1/2/4/8/16/32) na aba de Perfis
+- Correção no `setup.php`: `$PLUGIN_HOOKS['csrf_compliant']` movido para escopo global (compatibilidade com ativação CLI)
 
-**Para retomar (próxima sessão) — nesta ordem:**
+**Fase 2 — Editor Visual de Templates PDF: CONCLUÍDA [x]**
 
-1. `docker compose up -d` (recriar o container GLPI com os novos mounts de volume já corrigidos)
-2. Restaurar `/var/www/html/glpi/config/config_db.php` com as credenciais do `.env` (host `mariadb`, db/user/pass `glpi`) — persistirá no volume `glpi_config`
-3. Regenerar `glpicrypt.key`: `docker exec smartdocs-glpi php /var/www/html/glpi/bin/console glpi:security:change_key` (dados criptografados anteriores, se houver, serão perdidos — aceitável em dev)
-4. Validar: `curl http://localhost:8080/` (200, tela de login) e console conectando ao banco
-5. Instalar/ativar o plugin: `php bin/console glpi:plugin:install smartdocs --username=glpi` e `glpi:plugin:activate smartdocs`
-6. Validar critérios da Fase 1: plugin visível em Configuração → Plugins; 12 tabelas criadas (phpMyAdmin :8081); entrada "SmartDocs" no menu lateral; desinstalação remove as tabelas
-7. Marcar critérios da Fase 1 como concluídos e iniciar a Fase 2 (Editor Visual de Templates)
+Arquivos criados e validados (`php -l` sem erros):
 
-**Pendências:** nenhuma de código na Fase 1. Fases 2–10 não iniciadas.
+- **Modelos (src/Templates/):**
+  - `PdfTemplate.php` — CommonDBTM com publish(), archive(), duplicate(); getTable() sobrescrito
+  - `TemplateField.php` — Modelo de campo com tipos (text/image/signature/checkbox), escopos, posição JSON
+  - `PdfTemplateVersion.php` — Snapshot de versão no momento da publicação
+  - `TemplateRepository.php` — findById, findPublished, getFields, saveFields, duplicateFields
+  - `BindingKeyResolver.php` — Resolve eq.*, ticket.*, user.*, entity.* para valores do GLPI
+
+- **Páginas (front/):**
+  - `pdftemplate.php` — Lista de templates via Search do GLPI
+  - `pdftemplate.form.php` — Formulário de criação; redireciona para editor em templates existentes
+  - `pdftemplate.editor.php` — Injeta dados do template e carrega `js/editor.bundle.js`
+
+- **Endpoints AJAX (ajax/):**
+  - `get-template.php` — GET: retorna dados do template + campos + URL do PDF
+  - `save-fields.php` — POST: persiste campos do autosave (debounce 5s no frontend)
+  - `publish-template.php` — POST: valida campos, cria snapshot, muda status para PUBLISHED
+
+- **Frontend (js-src/editor/ → js/editor.bundle.js via Vite):**
+  - `index.js` — Entry point: TemplateEditor com layout, toolbar, sidebars, footer
+  - `PdfRenderer.js` — pdfjs-dist: renderiza páginas do PDF + miniaturas
+  - `CanvasEditor.js` — Konva.js: campos arrastáveis, redimensionáveis, selecionáveis
+  - `FieldPanel.js` — Painel esquerdo com botões de adicionar campo
+  - `PropertiesPanel.js` — Painel direito com label, binding key, escopo, posição (%)
+  - `HistoryManager.js` — Undo/redo com stack de 50 estados (Ctrl+Z / Ctrl+Y)
+  - `Autosave.js` — POST para save-fields.php a cada 5s de inatividade
+
+- **Build:**
+  - `package.json` — konva ^9.3.14, pdfjs-dist ^4.5.136, vite ^5.3.4
+  - `vite.config.js` — build IIFE para `js/editor.bundle.js`
+  - Bundle gerado: 578 KB (170 KB gzip)
+
+**Próximo passo:** Fase 3 — Preenchimento e Geração de PDF (modelos PdfDocument, FilledField, PdfGenerator, PdfQueue, wizard de preenchimento)
+
+**Pendências:** Fases 3–10 não iniciadas.
+
+---
+
+### 2026-07-19 (noite) — Fases 3–10 implementadas e revisadas [x]
+
+**Status geral: Todas as 10 fases concluídas e revisadas.**
+
+**Fase 3 — Preenchimento e Geração de PDF: CONCLUÍDA [x]**
+
+- `src/Documents/PdfDocument.php` — CommonDBTM com status transitions (DRAFT→IN_PROGRESS→GENERATING→GENERATED/ERROR)
+- `src/Documents/FilledField.php` — CommonDBTM para valores preenchidos
+- `src/Documents/DocumentRepository.php` — query builder CRUD
+- `src/Documents/DocumentService.php` — createFromTemplate, fillField, selectAsset, requestGeneration
+- `src/PdfEngine/RepetitionEngine.php` — layout de grade para N itens
+- `src/PdfEngine/FieldCloner.php` — clona campos por slot
+- `src/PdfEngine/PdfGenerator.php` — FPDI+TCPDF overlay (texto/imagem/assinatura/checkbox)
+- `src/PdfEngine/PdfQueue.php` — fila SQL com retry (max 3 tentativas)
+- `src/PdfEngine/PdfCronTask.php` — integração com CronTask do GLPI
+- Endpoints AJAX: `fill-field.php`, `select-asset.php`, `generate-pdf.php`, `job-status.php`, `asset-search.php`
+- Frontend: `js-src/wizard/` → `js/wizard.bundle.js` (WizardApp, FieldRenderer, AssetSelector)
+
+**Fase 4 — Scanner e OCR: CONCLUÍDA [x]**
+
+- `src/OCR/Contracts/OcrProviderInterface.php` — contrato de provedor
+- `src/OCR/OcrResult.php` — DTO com candidatos tipados
+- `src/OCR/Providers/TesseractProvider.php` — Tesseract local (eng+por)
+- `src/OCR/Providers/ExternalApiProvider.php` — API REST externa via curl
+- `src/OCR/OcrService.php` — fachada que seleciona provedor via config
+- `ajax/upload-scan.php` — endpoint de upload + OCR com validação de mime type
+- Hooks `POST_SHOW_ITEM` + `ADD_JAVASCRIPT_MODULE` em `setup.php`/`hook.php`
+- Frontend: `js-src/scanner/` → `js/scanner.bundle.js` (ScannerApp, ScannerModal, CSS)
+
+**Fase 5 — Cadastro Inteligente: CONCLUÍDA [x]**
+
+- `src/Equipment/GlpiAssetSearch.php` — busca multi-fallback (8 estratégias)
+- `src/Equipment/DuplicateDetector.php` — detecta duplicidade por serial/patrimônio/nome
+- `src/Equipment/NamingConvention.php` — nomenclatura V5.0 (PC-SPO-0042)
+- `src/Equipment/VerdictResolver.php` — compara OCR vs ativos existentes (NEW/DUPLICATE/SIMILAR)
+- `ajax/check-duplicate.php` — endpoint AJAX de verificação
+
+**Fase 6 — Vinculação a Chamados: CONCLUÍDA [x]**
+
+- `src/Services/TicketLinkService.php` — vincula PDF a Ticket (Ticket_User, Item_Ticket, Document, ITILFollowup)
+- `ajax/search-ticket.php` — busca de chamados por ID ou título
+- `ajax/link-ticket.php` — endpoint de vinculação com atribuição de técnico
+
+**Fase 7 — Gestão de Equipamentos Durante Preventiva: CONCLUÍDA [x]**
+
+- `src/Documents/EquipmentAssignment.php` — CommonDBTM com soft delete, optimistic locking, non-binding data JSON, item_index monotônico
+
+**Fase 8 — Smart Repopulate: CONCLUÍDA [x]**
+
+- `src/Documents/SmartRepopulate.php` — algoritmo de diff (keptUnchanged, keptWithChanges, added, removed)
+
+**Fase 9 — Wiki e Biblioteca Técnica: CONCLUÍDA [x]**
+
+- `src/Wiki/WikiDocument.php` — CommonDBTM com versionamento automático
+- `src/Wiki/WikiVersion.php` — snapshot de conteúdo
+- `src/Wiki/WikiCategory.php` — CommonDropdown hierárquico
+- `src/Library/TechnicalFile.php` — arquivos técnicos (manual, POP, contrato, garantia)
+- `src/Library/LibraryRepository.php` — query builder para biblioteca e wiki
+
+**Fase 10 — Qualidade e Compatibilidade: CONCLUÍDA [x]**
+
+- `phpunit.xml` — configuração PHPUnit 10.5 (testes Unit + Integration, cobertura clover/html)
+- `tests/Unit/Equipment/NamingConventionTest.php`
+- `tests/Unit/PdfEngine/RepetitionEngineTest.php`
+- `vitest.config.js` — configuração Vitest (jsdom, cobertura v8)
+- `tests/Unit/scanner/ScannerModal.test.js`
+- `.github/workflows/ci.yml` — GitHub Actions (PHP 8.2/8.3, CodeSniffer, PHPUnit, pnpm build, Vitest, package ZIP)
+
+**Revisão final — correções aplicadas:**
+
+1. **Permissões:** todos os endpoints AJAX e o hook `post_show_item` corrigidos para usar `PermissionManager::RIGHT_NAME` (`plugin_smartdocs`) + bitmask constante, eliminando direitos inexistentes (`plugin_smartdocs_scan`, `plugin_smartdocs_use`, etc.)
+2. **Tabelas:** adicionadas `glpi_plugin_smartdocs_equipment_assignments` e `glpi_plugin_smartdocs_technical_files` ao `install/install.php` (total: 14 tabelas)
+3. **Uninstall:** `install/uninstall.php` atualizado para remover as 14 tabelas na ordem inversa
+4. **Build:** Vite gera 3 bundles (`editor.bundle.js`, `wizard.bundle.js`, `scanner.bundle.js`) em formato ES module
+
+**Pendências pós-entrega (futuro):**
+
+- Testes de integração com banco SQLite/PostgreSQL
+- Validação manual em GLPI 11.x
+- Otimização de chunk do editor (>500 KB)
+- Configuração do provedor OCR no painel de admin
