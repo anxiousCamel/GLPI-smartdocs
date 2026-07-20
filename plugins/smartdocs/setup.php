@@ -79,9 +79,32 @@ function plugin_smartdocs_check_config(bool $verbose = false): bool
 {
     if (!file_exists(dirname(__FILE__) . '/vendor/autoload.php')) {
         if ($verbose) {
-            echo 'SmartDocs: dependências PHP não instaladas. '
-                . 'Execute <b>composer install --no-dev</b> na pasta do plugin '
-                . 'e recarregue o GLPI. Consulte o README.md para instruções.';
+            $plugin_dir = dirname(__FILE__);
+            $help_url   = '/plugins/smartdocs/front/config.setup.php';
+
+            echo '<div style="max-width: 640px; margin: 1rem 0;">';
+            echo '<h4 style="color: #dc3545;"><i class="fas fa-exclamation-triangle me-2"></i>'
+                . __('SmartDocs — Dependências não instaladas', 'smartdocs')
+                . '</h4>';
+            echo '<p>'
+                . __('O plugin SmartDocs precisa das dependências do Composer para funcionar. Execute o comando abaixo no terminal do servidor:', 'smartdocs')
+                . '</p>';
+            echo '<pre style="background: #1e293b; color: #e2e8f0; padding: 1rem; border-radius: 0.375rem; font-family: monospace; margin: 0.75rem 0;">';
+            echo 'cd ' . htmlescape($plugin_dir) . "\n";
+            echo 'composer install --no-dev --optimize-autoloader';
+            echo '</pre>';
+            echo '<p>'
+                . __('Depois execute o comando, recarregue o GLPI e clique em Ativar novamente.', 'smartdocs')
+                . '</p>';
+            echo '<p style="margin-top: 1rem;">';
+            echo '<a href="' . htmlescape($help_url) . '" class="btn btn-sm btn-primary" style="margin-right: 0.5rem;">';
+            echo '<i class="fas fa-book me-1"></i>' . __('Ver guia completo de instalação', 'smartdocs');
+            echo '</a>';
+            echo '<a href="' . htmlescape($help_url) . '" class="btn btn-sm btn-outline-secondary">';
+            echo '<i class="fas fa-stethoscope me-1"></i>' . __('Página de diagnóstico', 'smartdocs');
+            echo '</a>';
+            echo '</p>';
+            echo '</div>';
         }
         return false;
     }
