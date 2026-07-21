@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "glpi",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up", "glpi"],
+      "port": 8080
+    },
+    {
+      "name": "mariadb",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up", "mariadb"],
+      "port": 3306
+    },
+    {
+      "name": "phpmyadmin",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up", "phpmyadmin"],
+      "port": 8081
+    },
+    {
+      "name": "smartdocs-frontend",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--dir", "plugins/smartdocs", "run", "dev"],
+      "port": null
+    }
+  ]
+}

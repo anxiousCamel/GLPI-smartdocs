@@ -38,6 +38,20 @@ function plugin_smartdocs_run_install(): bool
         PermissionManager::installDefaultRights();
     }
 
+    // Tarefa automática: processa a fila de geração de PDF a cada 2 minutos.
+    // O nome precisa bater com o método estático PdfCronTask::cronSmartDocsPdfQueue().
+    if (class_exists(\GlpiPlugin\SmartDocs\PdfEngine\PdfCronTask::class)) {
+        CronTask::register(
+            \GlpiPlugin\SmartDocs\PdfEngine\PdfCronTask::class,
+            'SmartDocsPdfQueue',
+            2 * MINUTE_TIMESTAMP,
+            [
+                'comment' => __('Processa jobs pendentes de geração de PDF', 'smartdocs'),
+                'mode'    => CronTask::MODE_INTERNAL,
+            ]
+        );
+    }
+
     $migration->executeMigration();
 
     // Mensagem de orientação pós-instalação

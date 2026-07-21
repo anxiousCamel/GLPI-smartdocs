@@ -125,32 +125,32 @@ final class PermissionManager extends CommonGLPI
 
     public static function canReadTemplates(): bool
     {
-        return Session::haveRight(self::RIGHT_NAME, self::SMARTDOCS_TEMPLATE_READ);
+        return (bool) Session::haveRight(self::RIGHT_NAME, self::SMARTDOCS_TEMPLATE_READ);
     }
 
     public static function canWriteTemplates(): bool
     {
-        return Session::haveRight(self::RIGHT_NAME, self::SMARTDOCS_TEMPLATE_WRITE);
+        return (bool) Session::haveRight(self::RIGHT_NAME, self::SMARTDOCS_TEMPLATE_WRITE);
     }
 
     public static function canReadDocuments(): bool
     {
-        return Session::haveRight(self::RIGHT_NAME, self::SMARTDOCS_DOCUMENT_READ);
+        return (bool) Session::haveRight(self::RIGHT_NAME, self::SMARTDOCS_DOCUMENT_READ);
     }
 
     public static function canWriteDocuments(): bool
     {
-        return Session::haveRight(self::RIGHT_NAME, self::SMARTDOCS_DOCUMENT_WRITE);
+        return (bool) Session::haveRight(self::RIGHT_NAME, self::SMARTDOCS_DOCUMENT_WRITE);
     }
 
     public static function canUseOcr(): bool
     {
-        return Session::haveRight(self::RIGHT_NAME, self::SMARTDOCS_OCR_USE);
+        return (bool) Session::haveRight(self::RIGHT_NAME, self::SMARTDOCS_OCR_USE);
     }
 
     public static function canAdmin(): bool
     {
-        return Session::haveRight(self::RIGHT_NAME, self::SMARTDOCS_ADMIN);
+        return (bool) Session::haveRight(self::RIGHT_NAME, self::SMARTDOCS_ADMIN);
     }
 
     /**

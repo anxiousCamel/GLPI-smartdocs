@@ -17,7 +17,7 @@ Session::checkRight('config', READ);
 Html::header('SmartDocs — Configuração', $_SERVER['PHP_SELF'], 'config', 'plugin');
 
 $plugin_dir  = Plugin::getPhpDir('smartdocs');
-$web_dir     = Plugin::getWebDir('smartdocs', false);
+$web_dir     = Plugin::getWebDir('smartdocs');
 $composer_ok = file_exists($plugin_dir . '/vendor/autoload.php');
 $php_ok      = version_compare(PHP_VERSION, '8.2', '>=');
 

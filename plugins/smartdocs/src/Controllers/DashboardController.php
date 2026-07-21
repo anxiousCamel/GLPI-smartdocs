@@ -36,7 +36,7 @@ final class DashboardController
             'checklist'            => $checklist,
             'show_welcome_banner'  => $this->shouldShowWelcomeBanner(),
             'modules'              => $this->availableModules(),
-            'webdir'               => Plugin::getWebDir('smartdocs', false),
+            'webdir'               => Plugin::getWebDir('smartdocs'),
         ]);
     }
 
@@ -66,7 +66,7 @@ final class DashboardController
             $modules[] = [
                 'title'       => __('Templates PDF', 'smartdocs'),
                 'description' => __('Editor visual de templates de documentos', 'smartdocs'),
-                'url'         => Plugin::getWebDir('smartdocs', false) . '/front/pdftemplate.php',
+                'url'         => Plugin::getWebDir('smartdocs') . '/front/pdftemplate.php',
                 'icon'        => 'ti ti-layout-collage',
             ];
         }
@@ -75,7 +75,7 @@ final class DashboardController
             $modules[] = [
                 'title'       => __('Documentos', 'smartdocs'),
                 'description' => __('Preenchimento e geração de documentos PDF', 'smartdocs'),
-                'url'         => Plugin::getWebDir('smartdocs', false) . '/front/pdfdocument.php',
+                'url'         => Plugin::getWebDir('smartdocs') . '/front/pdfdocument.php',
                 'icon'        => 'ti ti-files',
             ];
         }
@@ -84,7 +84,7 @@ final class DashboardController
             $modules[] = [
                 'title'       => __('Configurações', 'smartdocs'),
                 'description' => __('Provedor de OCR, limites e integrações', 'smartdocs'),
-                'url'         => Plugin::getWebDir('smartdocs', false) . '/front/config.form.php',
+                'url'         => Plugin::getWebDir('smartdocs') . '/front/config.form.php',
                 'icon'        => 'ti ti-settings',
             ];
         }

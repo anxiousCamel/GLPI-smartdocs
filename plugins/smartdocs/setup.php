@@ -16,6 +16,10 @@ use Glpi\Plugin\Hooks;
 use GlpiPlugin\SmartDocs\GlpiCompat\MenuHelper;
 use GlpiPlugin\SmartDocs\Permissions\PermissionManager;
 
+// Polyfills de funções globais ausentes no GLPI 10.x (ex: htmlescape()).
+// Precisa carregar antes de qualquer código do plugin rodar.
+require_once dirname(__FILE__) . '/src/GlpiCompat/functions.php';
+
 define('PLUGIN_SMARTDOCS_VERSION', '1.0.0');
 define('PLUGIN_SMARTDOCS_MIN_GLPI', '10.0.0');
 define('PLUGIN_SMARTDOCS_MAX_GLPI', '11.99.99');
@@ -115,7 +119,7 @@ function plugin_smartdocs_check_config(bool $verbose = false): bool
  * Inicialização executada em toda requisição quando o plugin está ativo.
  * Registra autoload do Composer, hooks e integrações com o GLPI.
  */
-function plugin_smartdocs_init(): void
+function plugin_init_smartdocs(): void
 {
     /** @var array<string, array<string, mixed>> $PLUGIN_HOOKS */
     global $PLUGIN_HOOKS;
@@ -142,7 +146,7 @@ function plugin_smartdocs_init(): void
 
     // Menu lateral do GLPI (padrão GLPI 10/11: classe com getMenuContent()).
     $PLUGIN_HOOKS['menu_toadd']['smartdocs'] = [
-        'smartdocs' => MenuHelper::class,
+        'plugins' => MenuHelper::class,
     ];
 
     // Aba de permissões na tela de perfis do GLPI.

@@ -16,6 +16,7 @@ namespace GlpiPlugin\SmartDocs\OCR;
 use GlpiPlugin\SmartDocs\OCR\Contracts\OcrProviderInterface;
 use GlpiPlugin\SmartDocs\OCR\Providers\ExternalApiProvider;
 use GlpiPlugin\SmartDocs\OCR\Providers\TesseractProvider;
+use GlpiPlugin\SmartDocs\Services\PluginConfigService;
 
 final class OcrService
 {
@@ -51,11 +52,11 @@ final class OcrService
      */
     public static function buildProvider(): OcrProviderInterface
     {
-        $provider = \Config::getOption('smartdocs_ocr_provider', 'tesseract');
+        $provider = PluginConfigService::get('ocr_provider', 'browser');
 
         if ($provider === 'external_api') {
-            $apiUrl = \Config::getOption('smartdocs_ocr_api_url', '');
-            $apiKey = \Config::getOption('smartdocs_ocr_api_key', '');
+            $apiUrl = PluginConfigService::get('ocr_api_url', '');
+            $apiKey = PluginConfigService::get('ocr_api_key', '');
 
             if ($apiUrl === '' || $apiKey === '') {
                 throw new \RuntimeException(
@@ -66,8 +67,10 @@ final class OcrService
             return new ExternalApiProvider($apiUrl, $apiKey);
         }
 
-        // Padrão: Tesseract local
-        $lang = \Config::getOption('smartdocs_ocr_lang', 'eng+por');
+        // 'browser' (padrão, OCR client-side via WASM) e 'tesseract_local'
+        // usam o mesmo fallback server-side; o provedor 'browser' não chega
+        // a instanciar isto no fluxo normal (o scanner roda no navegador).
+        $lang = PluginConfigService::get('ocr_lang', 'eng+por');
 
         return new TesseractProvider($lang);
     }

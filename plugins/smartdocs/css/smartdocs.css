@@ -2,6 +2,16 @@
  * SmartDocs — Estilos do plugin
  */
 
+/*
+ * GLPI define `#page .small { width: 1% }` (truque de encolher coluna de
+ * tabela). Fora de <table>, essa regra colapsa qualquer bloco com a
+ * classe utilitária .small do Bootstrap/Tabler. Usamos esta classe própria
+ * em vez de `.small` para texto secundário fora de tabelas.
+ */
+.smartdocs-checklist-text {
+  font-size: 0.875rem;
+}
+
 .smartdocs-editor {
   min-height: 600px;
   background: #f8f9fa;

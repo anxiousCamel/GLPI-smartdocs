@@ -16,6 +16,8 @@ declare(strict_types=1);
 namespace GlpiPlugin\SmartDocs\Templates;
 
 use CommonDBTM;
+use Dropdown;
+use Html;
 use GlpiPlugin\SmartDocs\Permissions\PermissionManager;
 
 final class PdfTemplate extends CommonDBTM
@@ -36,6 +38,18 @@ final class PdfTemplate extends CommonDBTM
     public static function getTable($classname = null): string
     {
         return 'glpi_plugin_smartdocs_pdf_templates';
+    }
+
+    /**
+     * Sobrescreve a URL do formulário: o GLPI deriva a URL espelhando o
+     * namespace completo (Templates\PdfTemplate -> front/templates/
+     * pdftemplate.form.php), mas front/ deste plugin é plano.
+     */
+    public static function getFormURL($full = true): string
+    {
+        $dir = $full ? \Plugin::getWebDir('smartdocs') : '';
+
+        return $dir . '/front/pdftemplate.form.php';
     }
 
     /**

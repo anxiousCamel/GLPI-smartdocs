@@ -48,7 +48,7 @@ final class DiagnosticController
             'cron_info'         => $this->getCronInfo(),
             'profile_summary'   => $this->getProfileSummary(),
             'exts'              => $this->getExtensionsStatus(),
-            'webdir'            => Plugin::getWebDir('smartdocs', false),
+            'webdir'            => Plugin::getWebDir('smartdocs'),
         ];
 
         \Glpi\Application\View\TemplateRenderer::getInstance()->display(

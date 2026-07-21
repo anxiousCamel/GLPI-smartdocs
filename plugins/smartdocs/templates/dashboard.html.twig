@@ -60,7 +60,7 @@
                                 <span class="avatar bg-red-lt"><i class="ti ti-x text-danger"></i></span>
                                 <div class="flex-fill">
                                     <div class="fw-bold">{{ item.label }}</div>
-                                    <div class="text-muted small">{{ item.message }}</div>
+                                    <div class="text-muted smartdocs-checklist-text">{{ item.message }}</div>
                                 </div>
                                 {% if item.action_url %}
                                     <a href="{{ item.action_url }}" class="btn btn-sm btn-outline-primary">
@@ -74,7 +74,7 @@
                                 <span class="avatar bg-green-lt"><i class="ti ti-check text-success"></i></span>
                                 <div>
                                     <div>{{ item.label }}</div>
-                                    <div class="small">{{ item.message }}</div>
+                                    <div class="smartdocs-checklist-text">{{ item.message }}</div>
                                 </div>
                             </div>
                         {% endfor %}
@@ -127,7 +127,7 @@
                             </span>
                             <div>
                                 <div class="fw-bold">{{ module.title }}</div>
-                                <div class="text-muted small">{{ module.description }}</div>
+                                <div class="text-muted smartdocs-checklist-text">{{ module.description }}</div>
                             </div>
                         </div>
                     </div>
@@ -137,7 +137,7 @@
     </div>
 
     {# Rodapé com links úteis #}
-    <div class="mt-4 text-muted small">
+    <div class="mt-4 text-muted smartdocs-checklist-text">
         <a href="{{ webdir }}/front/diagnostic.php">
             <i class="ti ti-stethoscope me-1"></i>{{ __('Página de diagnóstico', 'smartdocs') }}
         </a>

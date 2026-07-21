@@ -39,6 +39,18 @@ final class PdfDocument extends CommonDBTM
         return 'glpi_plugin_smartdocs_pdf_documents';
     }
 
+    /**
+     * Sobrescreve a URL do formulário: o GLPI deriva a URL espelhando o
+     * namespace completo (Documents\PdfDocument -> front/documents/
+     * pdfdocument.form.php), mas front/ deste plugin é plano.
+     */
+    public static function getFormURL($full = true): string
+    {
+        $dir = $full ? \Plugin::getWebDir('smartdocs') : '';
+
+        return $dir . '/front/pdfdocument.form.php';
+    }
+
     public static function canCreate(): bool
     {
         return PermissionManager::canWriteDocuments();

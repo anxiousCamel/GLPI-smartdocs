@@ -114,7 +114,7 @@ final class MenuHelper
      */
     public static function frontUrl(string $page): string
     {
-        return \Plugin::getWebDir('smartdocs', false) . '/front/' . $page;
+        return \Plugin::getWebDir('smartdocs') . '/front/' . $page;
     }
 
     /**

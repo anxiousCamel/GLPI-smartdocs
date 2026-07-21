@@ -42,7 +42,7 @@ final class PdfCronTask extends CommonGLPI
      *
      * @return int Número de jobs processados
      */
-    public static function cronProcessPdfQueue(CronTask $task): int
+    public static function cronSmartDocsPdfQueue(CronTask $task): int
     {
         $maxJobs = (int) ($task->fields['param'] ?? 5);
         $queue = new PdfQueue();

@@ -62,7 +62,7 @@ final class SetupChecklistService
             'message'      => $ok
                 ? __('Todas as dependências PHP estão instaladas.', 'smartdocs')
                 : __('As dependências do Composer não foram instaladas. O menu SmartDocs não aparece até isso ser feito.', 'smartdocs'),
-            'action_url'   => $ok ? null : Plugin::getWebDir('smartdocs', false) . '/front/config.setup.php',
+            'action_url'   => $ok ? null : Plugin::getWebDir('smartdocs') . '/front/config.setup.php',
             'action_label' => $ok ? null : __('Ver como instalar', 'smartdocs'),
         ];
     }
@@ -198,7 +198,7 @@ final class SetupChecklistService
             'message'      => $ok
                 ? sprintf(__('%d template(s) publicado(s) disponível(is) para uso.', 'smartdocs'), $count)
                 : __('Nenhum template publicado ainda. Sem templates, não é possível gerar documentos.', 'smartdocs'),
-            'action_url'   => $ok ? null : Plugin::getWebDir('smartdocs', false) . '/front/pdftemplate.form.php',
+            'action_url'   => $ok ? null : Plugin::getWebDir('smartdocs') . '/front/pdftemplate.form.php',
             'action_label' => $ok ? null : __('Criar primeiro template', 'smartdocs'),
         ];
     }
@@ -227,7 +227,7 @@ final class SetupChecklistService
             'message'      => $ok
                 ? sprintf(__('Provedor OCR configurado: %s.', 'smartdocs'), $provider)
                 : __('O provedor de OCR não está configurado. O scanner de etiquetas pode não funcionar.', 'smartdocs'),
-            'action_url'   => $ok ? null : Plugin::getWebDir('smartdocs', false) . '/front/config.form.php',
+            'action_url'   => $ok ? null : Plugin::getWebDir('smartdocs') . '/front/config.form.php',
             'action_label' => $ok ? null : __('Configurar OCR', 'smartdocs'),
         ];
     }

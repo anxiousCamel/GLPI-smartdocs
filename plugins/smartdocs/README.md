@@ -38,7 +38,7 @@ composer install --no-dev --optimize-autoloader
 
 ### 1. Copiar o plugin
 
-Coloque a pasta `smartdocs` dentro de `glpi/plugins/`:
+Coloque a pasta `smartdocs` dentro do diretório de plugins do seu GLPI (`glpi/plugins/`):
 
 ```
 glpi/
@@ -46,14 +46,29 @@ glpi/
     └── smartdocs/   ← aqui
 ```
 
-### 2. Instalar dependências PHP
+### 2. Instalar dependências PHP (Obrigatório)
 
+O plugin exige bibliotecas PHP externas (geração de PDF, OCR, etc.) para funcionar. Escolha o método que melhor se adapta ao seu ambiente:
+
+#### Opção A: Servidor Convencional (Linux/Windows com Composer instalado)
+Navegue até a pasta do plugin no terminal e execute:
 ```bash
-cd plugins/smartdocs
+cd glpi/plugins/smartdocs
 composer install --no-dev --optimize-autoloader
 ```
 
-> Sem este passo o menu SmartDocs **não aparece** no GLPI. O plugin detecta automaticamente e mostra um aviso no dashboard.
+#### Opção B: Ambiente Docker Local (usando container temporário do Composer)
+Se você está rodando o GLPI localmente em containers Docker e não tem o PHP ou o Composer instalados diretamente na sua máquina física:
+```bash
+# Certifique-se de estar na pasta raiz do projeto (onde fica o docker-compose.yml) e execute:
+docker run --rm -v "%cd%/plugins/smartdocs:/app" composer install --no-dev --optimize-autoloader
+# (No PowerShell/Linux, substitua %cd% por ${PWD})
+```
+
+#### Opção C: Servidor Remoto / Hospedagem sem Composer
+Se você está instalando em um servidor de hospedagem onde não consegue rodar comandos, você deve rodar o `composer install --no-dev --optimize-autoloader` na sua máquina local de desenvolvimento e depois fazer o upload de **toda a pasta** `smartdocs` (incluindo a pasta `vendor` que foi criada) para o servidor de produção.
+
+> ⚠️ **Atenção:** Sem este passo de dependências, o menu SmartDocs **não aparece** na interface do GLPI. Se você tentar ativar o plugin sem elas, ele exibirá uma mensagem de erro vermelha no painel detalhando as instruções.
 
 ### 3. Ativar no GLPI
 
