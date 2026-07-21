@@ -42,6 +42,13 @@ if ($template->fields['status'] === GlpiPlugin\SmartDocs\Templates\PdfTemplate::
 }
 
 $repo = new GlpiPlugin\SmartDocs\Templates\TemplateRepository();
-$repo->saveFields($templateId, $fields);
+
+try {
+    $repo->saveFields($templateId, $fields);
+} catch (\RuntimeException $e) {
+    http_response_code(500);
+    echo json_encode(['error' => 'SAVE_FAILED', 'message' => $e->getMessage()]);
+    exit;
+}
 
 echo json_encode(['success' => true, 'saved_at' => date('c')]);

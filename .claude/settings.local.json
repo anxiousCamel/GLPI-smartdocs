@@ -10,7 +10,23 @@
       "PowerShell(npm cache *)",
       "Bash(rtk ls *)",
       "Bash(rtk read *)",
-      "Bash(rtk docker *)"
+      "Bash(rtk docker *)",
+      "Bash(git -C plugins/smartdocs log --oneline -5)",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec smartdocs-glpi ls -la /var/www/html/glpi/plugins/smartdocs)",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec smartdocs-glpi ls -la /var/www/html/glpi/plugins/smartdocs/vendor)",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec smartdocs-glpi test -f /var/www/html/glpi/plugins/smartdocs/setup.php)",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec smartdocs-glpi find /var/www/html/glpi/files/_log -type f)",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec smartdocs-glpi sh -c \"tail -n 100 /var/log/apache2/error.log 2>/dev/null || tail -n 100 /var/log/php*.log 2>/dev/null || true\")",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec smartdocs-glpi tail -n 100 /var/www/html/glpi/files/_log/php-errors.log)",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec smartdocs-db mysql -uroot -pglpiroot glpi -e \"SELECT id,name,directory,version,state FROM glpi_plugins WHERE directory='smartdocs';\")",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec smartdocs-glpi grep -n \"const \" /var/www/html/glpi/src/Plugin.php)",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec smartdocs-glpi grep -n \"function add\\\\b\" /var/www/html/glpi/src/Document.php)",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec smartdocs-glpi grep -n \"static function file\" /var/www/html/glpi/src/Html.php)",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec smartdocs-glpi sed -n '5540,5650p' /var/www/html/glpi/src/Html.php)",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec smartdocs-glpi grep -n \"_filename\\\\|uploadFiles\\\\|function add\\(\" /var/www/html/glpi/src/Document.php)",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec smartdocs-glpi grep -n \"multipart\" /var/www/html/glpi/src/CommonDBTM.php)",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec smartdocs-glpi grep -rn \"multipart\" /var/www/html/glpi/src/Html.php)",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec smartdocs-glpi sed -n '2540,2570p' /var/www/html/glpi/src/Html.php)"
     ]
   }
 }

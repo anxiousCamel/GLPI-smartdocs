@@ -51,6 +51,19 @@ final class PdfDocument extends CommonDBTM
         return $dir . '/front/pdfdocument.form.php';
     }
 
+    /**
+     * Mesma razão do getFormURL(): sem isso, Search::show() gera o link
+     * "Limpar"/reset e o botão de novo item apontando para
+     * front/documents/pdfdocument.php (derivado do namespace), que não
+     * existe.
+     */
+    public static function getSearchURL($full = true): string
+    {
+        $dir = $full ? \Plugin::getWebDir('smartdocs') : '';
+
+        return $dir . '/front/pdfdocument.php';
+    }
+
     public static function canCreate(): bool
     {
         return PermissionManager::canWriteDocuments();

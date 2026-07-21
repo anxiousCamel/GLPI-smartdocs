@@ -16,6 +16,7 @@ declare(strict_types=1);
 namespace GlpiPlugin\SmartDocs\Templates;
 
 use CommonDBTM;
+use Document;
 use Dropdown;
 use Html;
 use GlpiPlugin\SmartDocs\Permissions\PermissionManager;
@@ -50,6 +51,19 @@ final class PdfTemplate extends CommonDBTM
         $dir = $full ? \Plugin::getWebDir('smartdocs') : '';
 
         return $dir . '/front/pdftemplate.form.php';
+    }
+
+    /**
+     * Mesma razão do getFormURL(): sem isso, Search::show() gera o link
+     * "Limpar"/reset e o botão de novo item apontando para
+     * front/templates/pdftemplate.php (derivado do namespace), que não
+     * existe.
+     */
+    public static function getSearchURL($full = true): string
+    {
+        $dir = $full ? \Plugin::getWebDir('smartdocs') : '';
+
+        return $dir . '/front/pdftemplate.php';
     }
 
     /**
@@ -170,6 +184,7 @@ final class PdfTemplate extends CommonDBTM
         }
 
         $input['name'] = trim($input['name']);
+        $input = $this->handleBaseFileUpload($input);
 
         return $input;
     }
@@ -184,6 +199,35 @@ final class PdfTemplate extends CommonDBTM
     {
         if (isset($input['name'])) {
             $input['name'] = trim($input['name']);
+        }
+
+        $input = $this->handleBaseFileUpload($input);
+
+        return $input;
+    }
+
+    /**
+     * Move o arquivo base enviado (PDF, DOCX, CSV, imagem etc.) para um
+     * Document nativo do GLPI e vincula seu ID a pdf_file_documents_id.
+     *
+     * O widget Html::file() popula $input['_filename'] no submit; sem
+     * upload novo o campo simplesmente não aparece e o vínculo existente
+     * é preservado.
+     *
+     * @param array $input
+     * @return array
+     */
+    private function handleBaseFileUpload(array $input): array
+    {
+        if (empty($input['_filename'])) {
+            return $input;
+        }
+
+        $document = new Document();
+        $documentId = $document->add($input);
+
+        if ($documentId !== false) {
+            $input['pdf_file_documents_id'] = $documentId;
         }
 
         return $input;
@@ -220,8 +264,28 @@ final class PdfTemplate extends CommonDBTM
         echo "<td>";
         echo Dropdown::showFromArray('fill_mode', [
             'single' => __('Único', 'smartdocs'),
-            'repeat' => __('Repetição (grade)', 'smartdocs'),
+            'repeat' => __('Repetição em grade', 'smartdocs'),
         ], ['value' => $this->fields['fill_mode'] ?? 'single', 'display' => false]);
+        echo Html::showToolTip(
+            '<b>' . __('Único', 'smartdocs') . '</b>: ' . __('cada grupo de campos representa um equipamento de tipo diferente (ex.: compressor, painel elétrico). Preenchimento manual, campo a campo.', 'smartdocs')
+            . '<br><br>'
+            . '<b>' . __('Repetição em grade', 'smartdocs') . '</b>: ' . __('um único grupo de campos se repete para vários equipamentos do mesmo tipo (ex.: todas as balanças do estoque). Preenchimento automático, um item por linha.', 'smartdocs'),
+            ['display' => false]
+        );
+        echo "</td>";
+        echo "</tr>";
+
+        echo "<tr class='tab_bg_1'>";
+        echo "<td>" . __('Arquivo base', 'smartdocs') . "</td>";
+        echo "<td>";
+        Html::file([
+            'name'     => 'filename',
+            'multiple' => false,
+            'required' => empty($this->fields['pdf_file_documents_id']),
+        ]);
+        echo "<span class='form-text text-muted'>"
+            . __('PDF, DOCX, CSV, PNG, JPEG ou outros tipos habilitados em Configurar > Tipos de documento.', 'smartdocs')
+            . "</span>";
         echo "</td>";
         echo "</tr>";
 

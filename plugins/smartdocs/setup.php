@@ -149,6 +149,14 @@ function plugin_init_smartdocs(): void
         'plugins' => MenuHelper::class,
     ];
 
+    // Registra o mapeamento tabela <-> itemtype para as classes que
+    // sobrescrevem getTable() com nomes customizados (evitando os nomes
+    // longos que o GLPI derivaria do namespace completo). Sem isso,
+    // DbUtils::getItemTypeForTable() não consegue resolver a tabela de
+    // volta para a classe (cai em "UNKNOWN"), quebrando Search::show()
+    // usado pelas listagens (front/pdftemplate.php, front/pdfdocument.php).
+    plugin_smartdocs_register_table_mappings();
+
     // Aba de permissões na tela de perfis do GLPI.
     Plugin::registerClass(PermissionManager::class, ['addtabon' => 'Profile']);
 
@@ -159,4 +167,31 @@ function plugin_init_smartdocs(): void
     $PLUGIN_HOOKS['add_javascript']['smartdocs'] = [
         'js/scanner.bundle.js',
     ];
+}
+
+/**
+ * Pré-registra o mapeamento tabela <-> itemtype no cache do GLPI
+ * ($CFG_GLPI['glpitablesitemtype'] / ['glpiitemtypetables']) para as
+ * classes do plugin que sobrescrevem getTable(). Ver comentário em
+ * plugin_init_smartdocs().
+ */
+function plugin_smartdocs_register_table_mappings(): void
+{
+    global $CFG_GLPI;
+
+    $mappings = [
+        \GlpiPlugin\SmartDocs\Templates\PdfTemplate::class        => 'glpi_plugin_smartdocs_pdf_templates',
+        \GlpiPlugin\SmartDocs\Templates\PdfTemplateVersion::class => 'glpi_plugin_smartdocs_pdf_template_versions',
+        \GlpiPlugin\SmartDocs\Templates\TemplateField::class      => 'glpi_plugin_smartdocs_pdf_template_fields',
+        \GlpiPlugin\SmartDocs\Documents\PdfDocument::class        => 'glpi_plugin_smartdocs_pdf_documents',
+        \GlpiPlugin\SmartDocs\Documents\FilledField::class        => 'glpi_plugin_smartdocs_pdf_filled_fields',
+        \GlpiPlugin\SmartDocs\Library\TechnicalFile::class        => 'glpi_plugin_smartdocs_technical_files',
+        \GlpiPlugin\SmartDocs\Wiki\WikiCategory::class             => 'glpi_plugin_smartdocs_wiki_categories',
+        \GlpiPlugin\SmartDocs\Wiki\WikiVersion::class              => 'glpi_plugin_smartdocs_wiki_versions',
+    ];
+
+    foreach ($mappings as $itemtype => $table) {
+        $CFG_GLPI['glpitablesitemtype'][$itemtype] = $table;
+        $CFG_GLPI['glpiitemtypetables'][$table]     = $itemtype;
+    }
 }

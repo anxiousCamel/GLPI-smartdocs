@@ -31,12 +31,14 @@ if (!$template->getFromDB($id)) {
 $repo   = new GlpiPlugin\SmartDocs\Templates\TemplateRepository();
 $fields = $repo->getFields($id);
 
-// URL do PDF base (se houver documento vinculado)
+// URL do PDF base (se houver documento vinculado).
+// Document::getDownloadLink() retorna HTML (ícone + link) para exibição
+// em página, não uma URL — o PDF.js precisa da URL de download direta.
 $pdfUrl = '';
 if (!empty($template->fields['pdf_file_documents_id'])) {
     $doc = new Document();
     if ($doc->getFromDB($template->fields['pdf_file_documents_id'])) {
-        $pdfUrl = $doc->getDownloadLink();
+        $pdfUrl = $CFG_GLPI['root_doc'] . '/front/document.send.php?docid=' . $doc->fields['id'];
     }
 }
 
@@ -51,7 +53,7 @@ Html::header(
 // ----------------------------------------------------------------------
 // Injeção de dados para o JS
 // ----------------------------------------------------------------------
-$editorData = json_encode([
+$editorData = [
     'template_id' => (int) $id,
     'name'        => $template->fields['name'],
     'status'      => $template->fields['status'],
@@ -59,11 +61,13 @@ $editorData = json_encode([
     'pdf_url'     => $pdfUrl,
     'fields'      => $fields,
     'ajax_url'    => $CFG_GLPI['root_doc'] . '/plugins/smartdocs/ajax/',
-]);
+];
 
-// Carrega o bundle do editor
-$pluginPath = Plugin::getWebDir('smartdocs');
-echo '<script type="module" src="' . htmlescape($pluginPath . '/js/editor.bundle.js') . '"></script>';
+// Carrega o bundle do editor (cache-busting pelo mtime do arquivo)
+$pluginPath  = Plugin::getWebDir('smartdocs');
+$bundlePath  = dirname(__FILE__) . '/../js/editor.bundle.js';
+$bundleVer   = file_exists($bundlePath) ? filemtime($bundlePath) : PLUGIN_SMARTDOCS_VERSION;
+echo '<script type="module" src="' . htmlescape($pluginPath . '/js/editor.bundle.js?v=' . $bundleVer) . '"></script>';
 
 echo "<div id='smartdocs-editor-root' class='smartdocs-editor'></div>";
 

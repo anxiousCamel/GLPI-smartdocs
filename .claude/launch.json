@@ -5,7 +5,8 @@
       "name": "glpi",
       "runtimeExecutable": "docker",
       "runtimeArgs": ["compose", "up", "glpi"],
-      "port": 8080
+      "port": 8080,
+      "autoPort": false
     },
     {
       "name": "mariadb",

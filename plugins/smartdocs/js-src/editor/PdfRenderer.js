@@ -3,9 +3,9 @@
  */
 
 import * as pdfjsLib from 'pdfjs-dist';
+import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
-// Worker do PDF.js (usa o bundle interno)
-pdfjsLib.GlobalWorkerOptions.workerSrc = '';
+pdfjsLib.GlobalWorkerOptions.workerSrc = PdfWorker;
 
 export class PdfRenderer {
   constructor(container, pdfUrl) {

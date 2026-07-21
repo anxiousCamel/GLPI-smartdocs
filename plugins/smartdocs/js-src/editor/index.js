@@ -16,7 +16,7 @@ class TemplateEditor {
   constructor(data) {
     this.data = data;
     this.fields = data.fields || [];
-    this.selectedFieldId = null;
+    this.selectedIds = [];
 
     this.container = document.getElementById('smartdocs-editor-root');
     if (!this.container) {
@@ -41,6 +41,21 @@ class TemplateEditor {
             <span class="autosave-status text-muted small ms-2" id="autosave-status"></span>
           </div>
           <div class="toolbar-right">
+            <div class="zoom-controls me-2">
+              <button type="button" class="btn btn-secondary btn-sm" id="btn-zoom-out" title="Diminuir zoom">
+                <i class="ti ti-zoom-out"></i>
+              </button>
+              <span id="zoom-level" class="zoom-level">100%</span>
+              <button type="button" class="btn btn-secondary btn-sm" id="btn-zoom-in" title="Aumentar zoom">
+                <i class="ti ti-zoom-in"></i>
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" id="btn-zoom-reset" title="Resetar zoom (scroll para zoom, botão direito+arrastar para mover)">
+                <i class="ti ti-focus-2"></i>
+              </button>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm me-2" id="btn-toggle-grid" title="Ativar/desativar grade de alinhamento">
+              <i class="ti ti-grid-dots"></i>
+            </button>
             <button type="button" class="btn btn-secondary btn-sm" id="btn-undo" title="Desfazer (Ctrl+Z)">
               <i class="ti ti-arrow-back-up"></i>
             </button>
@@ -54,15 +69,47 @@ class TemplateEditor {
           </div>
         </div>
         <div class="editor-body">
-          <div class="editor-sidebar" id="field-panel"></div>
-          <div class="editor-canvas-wrapper" id="canvas-wrapper">
-            <div id="pdf-container"></div>
-            <div id="konva-container"></div>
+          <div class="editor-sidebar" id="field-sidebar">
+            <button type="button" class="sidebar-collapse-btn" id="toggle-field-sidebar" title="Recolher painel">
+              <i class="ti ti-chevron-left"></i>
+            </button>
+            <div class="sidebar-inner" id="field-panel"></div>
           </div>
-          <div class="editor-sidebar" id="properties-panel"></div>
+          <div class="editor-canvas-wrapper" id="canvas-wrapper">
+            <div class="page-spacer" id="page-spacer">
+              <div class="page-stage" id="page-stage">
+                <div id="pdf-container"></div>
+                <div id="konva-container"></div>
+              </div>
+            </div>
+          </div>
+          <div class="editor-sidebar" id="properties-sidebar">
+            <button type="button" class="sidebar-collapse-btn" id="toggle-properties-sidebar" title="Recolher painel">
+              <i class="ti ti-chevron-right"></i>
+            </button>
+            <div class="sidebar-inner" id="properties-panel"></div>
+          </div>
         </div>
         <div class="editor-footer">
           <div class="page-thumbnails" id="page-thumbnails"></div>
+          <div class="shortcuts-hints">
+            <div class="shortcut-item">
+              <i class="ti ti-scroll"></i>
+              <span><strong>Scroll</strong> zoom</span>
+            </div>
+            <div class="shortcut-item">
+              <i class="ti ti-mouse-2"></i>
+              <span><strong>Botão direito</strong> + arrastar: mover</span>
+            </div>
+            <div class="shortcut-item">
+              <i class="ti ti-click"></i>
+              <span><strong>Shift</strong> + clique/arrastar: seleção</span>
+            </div>
+            <div class="shortcut-item">
+              <i class="ti ti-copy-check"></i>
+              <span><strong>Ctrl+C/V</strong> copiar/colar</span>
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -102,31 +149,61 @@ class TemplateEditor {
       }
       .editor-sidebar {
         width: 220px;
+        min-width: 220px;
         background: #fff;
         border-right: 1px solid #e2e8f0;
         padding: 12px;
         overflow-y: auto;
+        transition: width 0.15s, min-width 0.15s;
+        position: relative;
       }
       .editor-sidebar:last-child { border-right: none; border-left: 1px solid #e2e8f0; }
+      .editor-sidebar.collapsed {
+        width: 36px;
+        min-width: 36px;
+        padding: 8px 4px;
+        overflow: hidden;
+      }
+      .editor-sidebar.collapsed .sidebar-inner { display: none; }
+      .sidebar-collapse-btn {
+        width: 100%;
+        background: transparent;
+        border: none;
+        border-bottom: 1px solid #e2e8f0;
+        padding: 6px;
+        margin-bottom: 8px;
+        cursor: pointer;
+        color: #667;
+        text-align: center;
+        border-radius: 4px;
+      }
+      .sidebar-collapse-btn:hover { background: #f4f6f8; color: #206bc4; }
+      .editor-sidebar.collapsed .sidebar-collapse-btn { border-bottom: none; margin-bottom: 0; }
       .editor-canvas-wrapper {
         flex: 1;
         position: relative;
         overflow: auto;
-        display: flex;
-        justify-content: center;
-        align-items: flex-start;
         padding: 24px;
+      }
+      .page-spacer {
+        position: relative;
+        margin: 0 auto;
+      }
+      .page-stage {
+        position: absolute;
+        top: 0;
+        left: 0;
+        transform-origin: 0 0;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
       }
       #pdf-container {
         position: relative;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
         background: #fff;
       }
       #konva-container {
         position: absolute;
-        top: 24px;
-        left: 50%;
-        transform: translateX(-50%);
+        top: 0;
+        left: 0;
         pointer-events: auto;
       }
       .editor-footer {
@@ -135,6 +212,61 @@ class TemplateEditor {
         border-top: 1px solid #e2e8f0;
         padding: 8px 16px;
         overflow-x: auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .shortcuts-hints {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+        font-size: 12px;
+      }
+      .shortcut-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        background: #f4f6f8;
+        border-radius: 4px;
+        border: 1px solid #e2e8f0;
+        white-space: nowrap;
+      }
+      .shortcut-item i {
+        font-size: 14px;
+        color: #206bc4;
+        flex-shrink: 0;
+      }
+      .shortcut-item span {
+        color: #444;
+      }
+      .shortcut-item strong {
+        font-weight: 600;
+        color: #206bc4;
+      }
+      .zoom-controls { display: inline-flex; align-items: center; gap: 4px; }
+      .zoom-level { font-size: 12px; color: #666; width: 42px; text-align: center; display: inline-block; }
+      .prop-group-swatch {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        border: 1px solid rgba(0,0,0,0.15);
+      }
+      .prop-group label { display: flex; align-items: center; gap: 4px; }
+      .prop-group label .ti-info-circle { font-size: 13px; }
+      #prop-font-bold.active, .align-btn.active {
+        background: #206bc4;
+        border-color: #206bc4;
+        color: #fff;
+      }
+      #btn-toggle-grid.active-toggle {
+        background: #206bc4;
+        border-color: #206bc4;
+        color: #fff;
       }
       .page-thumbnails { display: flex; gap: 8px; }
       .page-thumb {
@@ -223,7 +355,7 @@ class TemplateEditor {
 
     this.propertiesPanel = new PropertiesPanel(
       document.getElementById('properties-panel'),
-      (fieldData) => this.canvasEditor.updateSelectedField(fieldData)
+      (data) => this.canvasEditor.updateSelectedFields(data)
     );
 
     this.pdfRenderer = new PdfRenderer(
@@ -234,28 +366,166 @@ class TemplateEditor {
     this.canvasEditor = new CanvasEditor(
       document.getElementById('konva-container'),
       this.fields,
-      (fieldId) => this.onFieldSelect(fieldId),
+      (ids) => this.onSelectionChange(ids),
       (fields) => this.onFieldsChange(fields)
     );
+
+    this.initZoomPan();
+  }
+
+  /**
+   * Zoom/pan do canvas. O PDF (<canvas> do pdf.js) e o Konva ficam em
+   * elementos DOM separados dentro de #page-stage — escalamos os dois
+   * juntos via CSS transform nesse wrapper compartilhado, em vez de
+   * escalar só o stage do Konva (o que descolava os campos do PDF).
+   * O "spacer" ao redor define a área de scroll real (transform não
+   * altera o tamanho de layout do elemento).
+   */
+  initZoomPan() {
+    this.zoom = 1;
+    this.minZoom = 0.2;
+    this.maxZoom = 4;
+
+    this.wrapperEl = document.getElementById('canvas-wrapper');
+    this.spacerEl = document.getElementById('page-spacer');
+    this.stageEl = document.getElementById('page-stage');
+
+    this.wrapperEl.addEventListener('wheel', (e) => {
+      // Sem exigir Ctrl: scroll sozinho já dá zoom (uso com uma mão só).
+      // O pan (botão direito+arrastar) cobre a navegação lateral/vertical,
+      // então o wheel não precisa mais rolar a página normalmente.
+      e.preventDefault();
+
+      const rect = this.wrapperEl.getBoundingClientRect();
+      const pointerX = e.clientX - rect.left + this.wrapperEl.scrollLeft;
+      const pointerY = e.clientY - rect.top + this.wrapperEl.scrollTop;
+      const unscaledX = pointerX / this.zoom;
+      const unscaledY = pointerY / this.zoom;
+
+      const factor = e.deltaY > 0 ? 1 / 1.08 : 1.08;
+      this.setZoom(this.zoom * factor);
+
+      this.wrapperEl.scrollLeft = unscaledX * this.zoom - (e.clientX - rect.left);
+      this.wrapperEl.scrollTop = unscaledY * this.zoom - (e.clientY - rect.top);
+    }, { passive: false });
+
+    // Botão direito + arrastar move a tela (padrão CAD). Evitamos a barra
+    // de espaço: o navegador rola a página com ela por padrão e cancelar
+    // isso de forma confiável em todo contexto (botões, links) é frágil —
+    // media o "teleporte" relatado.
+    let panning = false;
+    let panStart = null;
+    let suppressNextContextMenu = false;
+
+    this.wrapperEl.addEventListener('mousedown', (e) => {
+      if (e.button !== 2) return;
+      e.preventDefault();
+      panning = true;
+      suppressNextContextMenu = true;
+      panStart = { x: e.clientX, y: e.clientY, scrollLeft: this.wrapperEl.scrollLeft, scrollTop: this.wrapperEl.scrollTop };
+      this.wrapperEl.style.cursor = 'grabbing';
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!panning) return;
+      this.wrapperEl.scrollLeft = panStart.scrollLeft - (e.clientX - panStart.x);
+      this.wrapperEl.scrollTop = panStart.scrollTop - (e.clientY - panStart.y);
+    });
+    window.addEventListener('mouseup', (e) => {
+      if (e.button !== 2 || !panning) return;
+      panning = false;
+      this.wrapperEl.style.cursor = 'default';
+    });
+    // O botão direito abriria o menu de contexto do navegador ao soltar —
+    // bloqueia sempre que o arrasto começou no canvas, mesmo se o mouse
+    // tiver saído da área (o evento 'contextmenu' dispara em qualquer
+    // elemento sob o cursor no momento do soltar).
+    window.addEventListener('contextmenu', (e) => {
+      if (suppressNextContextMenu) {
+        e.preventDefault();
+        suppressNextContextMenu = false;
+      }
+    });
+  }
+
+  setZoom(zoom) {
+    this.zoom = Math.max(this.minZoom, Math.min(this.maxZoom, zoom));
+    this.stageEl.style.transform = `scale(${this.zoom})`;
+    this.spacerEl.style.width = (this.canvasEditor.pageWidth * this.zoom) + 'px';
+    this.spacerEl.style.height = (this.canvasEditor.pageHeight * this.zoom) + 'px';
+    document.getElementById('zoom-level').textContent = Math.round(this.zoom * 100) + '%';
+  }
+
+  zoomBy(factor) {
+    this.setZoom(this.zoom * factor);
+  }
+
+  zoomReset() {
+    this.setZoom(1);
   }
 
   bindEvents() {
     document.getElementById('btn-undo').addEventListener('click', () => this.undo());
     document.getElementById('btn-redo').addEventListener('click', () => this.redo());
     document.getElementById('btn-publish').addEventListener('click', () => this.publish());
+    document.getElementById('btn-zoom-in').addEventListener('click', () => this.zoomBy(1.2));
+    document.getElementById('btn-zoom-out').addEventListener('click', () => this.zoomBy(1 / 1.2));
+    document.getElementById('btn-zoom-reset').addEventListener('click', () => this.zoomReset());
+
+    document.getElementById('btn-toggle-grid').addEventListener('click', (e) => {
+      const enabled = this.canvasEditor.toggleGrid();
+      e.currentTarget.classList.toggle('active-toggle', enabled);
+    });
+
+    document.getElementById('toggle-field-sidebar').addEventListener('click', () => {
+      const el = document.getElementById('field-sidebar');
+      const collapsed = el.classList.toggle('collapsed');
+      el.querySelector('.sidebar-collapse-btn i').className = collapsed ? 'ti ti-chevron-right' : 'ti ti-chevron-left';
+    });
+
+    document.getElementById('toggle-properties-sidebar').addEventListener('click', () => {
+      const el = document.getElementById('properties-sidebar');
+      const collapsed = el.classList.toggle('collapsed');
+      el.querySelector('.sidebar-collapse-btn i').className = collapsed ? 'ti ti-chevron-left' : 'ti ti-chevron-right';
+    });
 
     document.addEventListener('keydown', (e) => {
+      const isTyping = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
+
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
         e.preventDefault();
         this.undo();
+        return;
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
         e.preventDefault();
         this.redo();
+        return;
+      }
+      if (isTyping) return;
+
+      if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+        e.preventDefault();
+        this.canvasEditor.selectAll();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+        e.preventDefault();
+        this.canvasEditor.copySelected();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+        e.preventDefault();
+        this.canvasEditor.paste();
+        return;
+      }
+      if (e.key === 'Escape') {
+        this.canvasEditor.deselectAll();
+        return;
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (this.selectedFieldId && document.activeElement.tagName !== 'INPUT') {
-          this.canvasEditor.deleteField(this.selectedFieldId);
+        if (this.selectedIds.length > 0) {
+          e.preventDefault();
+          this.canvasEditor.deleteSelected();
         }
       }
     });
@@ -264,17 +534,20 @@ class TemplateEditor {
     if (this.data.pdf_url) {
       this.pdfRenderer.load().then(({ width, height }) => {
         this.canvasEditor.setPageSize(width, height);
+        this.setZoom(this.zoom);
       });
     } else {
       // Fallback: página A4 em 96 DPI
       this.canvasEditor.setPageSize(794, 1123);
+      this.setZoom(this.zoom);
     }
   }
 
-  onFieldSelect(fieldId) {
-    this.selectedFieldId = fieldId;
-    const field = this.fields.find(f => f.id === fieldId);
-    this.propertiesPanel.show(field);
+  onSelectionChange(ids) {
+    this.selectedIds = ids;
+    const selectedFields = this.fields.filter(f => ids.includes(f.id));
+    this.propertiesPanel.setKnownGroups(this.getKnownGroups());
+    this.propertiesPanel.show(selectedFields);
   }
 
   onFieldsChange(fields) {
@@ -282,6 +555,24 @@ class TemplateEditor {
     this.history.push([...fields]);
     this.autosave.schedule(fields);
     document.getElementById('autosave-status').textContent = 'Modificado';
+
+    // Arrastar/redimensionar no canvas muda a posição sem passar pelo
+    // painel de Propriedades — sem isto, os campos de X/Y/Largura/Altura
+    // ficavam com o valor antigo na tela, e qualquer outra edição nesse
+    // campo (label, grupo...) reenviava esse valor antigo e "resetava"
+    // o tamanho que acabou de ser ajustado no canvas.
+    if (this.selectedIds.length === 1) {
+      const updated = fields.find(f => f.id === this.selectedIds[0]);
+      if (updated) this.propertiesPanel.syncPosition(updated);
+    }
+  }
+
+  /** @returns {{label: string, index: number}[]} grupos com o mesmo índice (G1, G2...) exibido no canvas */
+  getKnownGroups() {
+    const indexMap = this.canvasEditor.getGroupIndexMap();
+    return [...indexMap.entries()]
+      .map(([label, index]) => ({ label, index }))
+      .sort((a, b) => a.index - b.index);
   }
 
   undo() {
@@ -306,6 +597,14 @@ class TemplateEditor {
     const btn = document.getElementById('btn-publish');
     btn.disabled = true;
     btn.innerHTML = '<i class="ti ti-loader-2 ti-spin"></i> Publicando...';
+
+    const saved = await this.autosave.flush();
+    if (!saved) {
+      alert('Não foi possível salvar os campos antes de publicar. Tente novamente.');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ti ti-check"></i> Publicar';
+      return;
+    }
 
     try {
       const res = await fetch(this.data.ajax_url + 'publish-template.php', {

@@ -49,6 +49,14 @@ if (GlpiPlugin\SmartDocs\Permissions\PermissionManager::canWriteTemplates()) {
         echo "</div>";
         echo "</div>";
         echo "</div>";
+    } else {
+        // Search::show() não gera botão de "novo item" para itemtypes de
+        // plugin — sem isso não haveria como criar um segundo template.
+        echo "<div class='container-fluid mt-3 text-end'>";
+        echo "<a href='" . GlpiPlugin\SmartDocs\GlpiCompat\MenuHelper::frontUrl('pdftemplate.form.php') . "' class='btn btn-sm btn-primary'>";
+        echo "<i class='ti ti-plus me-1'></i>" . __('Criar template', 'smartdocs');
+        echo "</a>";
+        echo "</div>";
     }
 }
 

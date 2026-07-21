@@ -119,8 +119,9 @@ final class PdfGenerator
         $fontSize = (float) ($config['font_size'] ?? 10);
         $fontFamily = $config['font_family'] ?? 'helvetica';
         $align = $config['align'] ?? 'L';
+        $style = !empty($config['bold']) ? 'B' : '';
 
-        $pdf->SetFont($fontFamily, '', $fontSize);
+        $pdf->SetFont($fontFamily, $style, $fontSize);
         $pdf->SetXY($x, $y);
         $pdf->Cell($w, $h, $value, 0, 0, $align);
     }

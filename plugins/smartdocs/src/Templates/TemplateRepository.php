@@ -102,16 +102,29 @@ final class TemplateRepository
         $DB->delete(TemplateField::getTable(), ['pdf_templates_id' => $templateId]);
 
         foreach ($fields as $field) {
-            $DB->insert(TemplateField::getTable(), [
+            // `position`/`config` podem chegar do JS já como string JSON ou
+            // como objeto/array — normaliza para não codificar duas vezes
+            // (o dobro de json_encode gera JSON inválido e a coluna JSON
+            // nativa rejeita o insert).
+            $position = $field['position'] ?? [];
+            $config   = $field['config'] ?? null;
+
+            $result = $DB->insert(TemplateField::getTable(), [
                 'pdf_templates_id' => $templateId,
                 'type'             => $field['type'] ?? 'text',
                 'page_index'       => $field['page_index'] ?? 0,
-                'position'         => json_encode($field['position'] ?? []),
-                'config'           => isset($field['config']) ? json_encode($field['config']) : null,
+                'position'         => is_string($position) ? $position : json_encode($position),
+                'config'           => $config === null ? null : (is_string($config) ? $config : json_encode($config)),
                 'scope'            => $field['scope'] ?? 'global',
                 'slot_index'       => $field['slot_index'] ?? null,
                 'binding_key'      => $field['binding_key'] ?? null,
+                'label'            => $field['label'] ?? null,
+                'group_label'      => $field['group_label'] ?? null,
             ]);
+
+            if ($result === false) {
+                throw new \RuntimeException('Falha ao salvar campo do template: ' . $DB->error());
+            }
         }
     }
 

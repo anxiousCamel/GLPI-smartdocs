@@ -12,13 +12,13 @@ export class FieldPanel {
   render() {
     this.container.innerHTML = `
       <h5 class="mb-3">${this.t('Campos')}</h5>
-      <p class="text-muted small mb-3">Clique para adicionar ao template</p>
+      <p class="smartdocs-checklist-text text-muted mb-3">Clique para adicionar ao template</p>
       <div class="field-list"></div>
     `;
 
     const list = this.container.querySelector('.field-list');
     const types = [
-      { type: 'text', label: this.t('Texto'), icon: 'ti-text-scan-2' },
+      { type: 'text', label: this.t('Texto'), icon: 'ti-text-size' },
       { type: 'image', label: this.t('Imagem'), icon: 'ti-photo' },
       { type: 'signature', label: this.t('Assinatura'), icon: 'ti-writing-sign' },
       { type: 'checkbox', label: this.t('Checkbox'), icon: 'ti-checkbox' },

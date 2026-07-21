@@ -87,6 +87,27 @@ function plugin_smartdocs_create_tables(DBmysql $DB, Migration $migration): void
             );
         }
     }
+
+    plugin_smartdocs_upgrade_tables($DB, $migration);
+}
+
+/**
+ * Adiciona colunas novas em tabelas já existentes (upgrades de versões
+ * anteriores do plugin). Idempotente via Migration::addField().
+ */
+function plugin_smartdocs_upgrade_tables(DBmysql $DB, Migration $migration): void
+{
+    $table = 'glpi_plugin_smartdocs_pdf_template_fields';
+
+    if ($DB->tableExists($table)) {
+        if (!$DB->fieldExists($table, 'label')) {
+            $migration->addField($table, 'label', 'VARCHAR(255)', ['null' => true]);
+        }
+        if (!$DB->fieldExists($table, 'group_label')) {
+            $migration->addField($table, 'group_label', 'VARCHAR(100)', ['null' => true]);
+            $migration->addKey($table, 'group_label', 'idx_group');
+        }
+    }
 }
 
 /**
@@ -156,10 +177,13 @@ function plugin_smartdocs_table_definitions(): array
                 `scope` ENUM('global','item') NOT NULL DEFAULT 'global',
                 `slot_index` INT NULL,
                 `binding_key` VARCHAR(100) NULL,
+                `label` VARCHAR(255) NULL,
+                `group_label` VARCHAR(100) NULL,
                 `date_creation` DATETIME NULL,
                 `date_mod` DATETIME NULL,
                 PRIMARY KEY (`id`),
-                KEY `idx_template` (`pdf_templates_id`)
+                KEY `idx_template` (`pdf_templates_id`),
+                KEY `idx_group` (`group_label`)
             ) {$engine}
         ",
 
