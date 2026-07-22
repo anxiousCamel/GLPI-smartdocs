@@ -116,6 +116,13 @@ final class PdfTemplate extends CommonDBTM
             throw new \RuntimeException('Não é possível publicar um template sem campos.');
         }
 
+        $errors = TemplatePaginator::validate($fields);
+        if ($errors !== []) {
+            throw new \RuntimeException(
+                'Não é possível publicar: ' . implode('; ', $errors)
+            );
+        }
+
         $nextVersion = ((int) $this->fields['version']) + 1;
 
         $version = new PdfTemplateVersion();

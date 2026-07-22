@@ -54,13 +54,14 @@ Html::header(
 // Injeção de dados para o JS
 // ----------------------------------------------------------------------
 $editorData = [
-    'template_id' => (int) $id,
-    'name'        => $template->fields['name'],
-    'status'      => $template->fields['status'],
-    'fill_mode'   => $template->fields['fill_mode'],
-    'pdf_url'     => $pdfUrl,
-    'fields'      => $fields,
-    'ajax_url'    => $CFG_GLPI['root_doc'] . '/plugins/smartdocs/ajax/',
+    'template_id'   => (int) $id,
+    'name'          => $template->fields['name'],
+    'status'        => $template->fields['status'],
+    'fill_mode'     => $template->fields['fill_mode'],
+    'pdf_url'       => $pdfUrl,
+    'fields'        => $fields,
+    'ajax_url'      => $CFG_GLPI['root_doc'] . '/plugins/smartdocs/ajax/',
+    'binding_keys'  => GlpiPlugin\SmartDocs\Templates\BindingKeyResolver::getAvailableKeys($template->fields['itemtype'] ?? null),
 ];
 
 // Carrega o bundle do editor (cache-busting pelo mtime do arquivo)

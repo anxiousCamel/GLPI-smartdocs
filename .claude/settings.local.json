@@ -26,7 +26,9 @@
       "Bash(MSYS_NO_PATHCONV=1 docker exec smartdocs-glpi grep -n \"_filename\\\\|uploadFiles\\\\|function add\\(\" /var/www/html/glpi/src/Document.php)",
       "Bash(MSYS_NO_PATHCONV=1 docker exec smartdocs-glpi grep -n \"multipart\" /var/www/html/glpi/src/CommonDBTM.php)",
       "Bash(MSYS_NO_PATHCONV=1 docker exec smartdocs-glpi grep -rn \"multipart\" /var/www/html/glpi/src/Html.php)",
-      "Bash(MSYS_NO_PATHCONV=1 docker exec smartdocs-glpi sed -n '2540,2570p' /var/www/html/glpi/src/Html.php)"
+      "Bash(MSYS_NO_PATHCONV=1 docker exec smartdocs-glpi sed -n '2540,2570p' /var/www/html/glpi/src/Html.php)",
+      "Bash(rtk wc *)",
+      "Bash(rtk grep *)"
     ]
   }
 }

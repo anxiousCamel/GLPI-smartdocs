@@ -4,9 +4,10 @@
  * ---------------------------------------------------------------------
  * SmartDocs — Plugin GLPI
  *
- * Motor de repetição: calcula layout de grade para N itens em páginas.
+ * Motor de repetição: calcula layout de grade para múltiplos itens.
  *
- * Porta 1:1 do TypeScript do RegCheck.
+ * @deprecated Não usado pelo motor principal desde a paginação por slot.
+ *             Mantido para testes de grid genérico.
  * ---------------------------------------------------------------------
  */
 

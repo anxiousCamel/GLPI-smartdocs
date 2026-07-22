@@ -1978,3 +1978,835 @@ Arquivos criados e validados (`php -l` sem erros):
 - Validação manual em GLPI 11.x
 - Otimização de chunk do editor (>500 KB)
 - Configuração do provedor OCR no painel de admin
+
+---
+
+## Apêndice 16 — Plano de Implementação: Fluxo Completo Criação → Populate → Preenchimento
+
+### Inventário: O que já existe e funciona
+
+| Componente | Arquivo | Status |
+|---|---|---|
+| Endpoint salvar campo | `ajax/fill-field.php` | ✓ existe |
+| Endpoint selecionar ativo | `ajax/select-asset.php` | ✓ existe |
+| Endpoint buscar ativos | `ajax/asset-search.php` | ✓ existe |
+| Endpoint info do template | `ajax/get-template.php` (retorna `fill_mode`) | ✓ existe |
+| Navegação grupo-a-grupo | `js-src/wizard/WizardApp.js` | ✓ existe |
+| Renderização campos + seletor ativo | `js-src/wizard/FieldRenderer.js` | ✓ existe |
+| Busca de ativos no JS | `js-src/wizard/AssetSelector.js` (`search()`) | ✓ existe |
+| Soft delete / reativação / nextItemIndex | `src/Documents/EquipmentAssignment.php` | ✓ existe |
+| Criação de documento + selectAsset | `src/Documents/DocumentService.php` | ✓ existe |
+| Algoritmo diff repopulate | `src/Documents/SmartRepopulate.php` | ✓ existe |
+
+### Gaps confirmados (o que falta)
+
+| # | Gap | Onde |
+|---|---|---|
+| G1 | `PdfDocument::showForm()` não existe | `src/Documents/PdfDocument.php` |
+| G2 | `prepareInputForAdd()` não valida template nem seta `template_version`/`entities_id` | `src/Documents/PdfDocument.php` |
+| G3 | Redirect falso quando `$newId=false`; redirect duplo (form→form→fill) | `front/pdfdocument.form.php` |
+| G4 | Campo `total_items` some quando `fill_mode=repeat` (template define o count) | `front/pdfdocument.form.php` (JS inline) |
+| G5 | Nenhuma tela de populate para `fill_mode=repeat` | `front/pdfdocument.fill.php` (detecção) |
+| G6 | Nenhum endpoint `populate.php` para bulk populate | `ajax/populate.php` (novo) |
+| G7 | `WizardApp.bindEvents()` não trata clique em "Buscar" nem seleção de resultado | `js-src/wizard/WizardApp.js` |
+| G8 | `AssetSelector` não tem `selectAsset()` — apenas `search()` | `js-src/wizard/AssetSelector.js` |
+
+---
+
+### Fluxo após implementação
+
+```
+[form.php POST]
+    ↓ add() com pdf_templates_id, template_version, entities_id
+    ↓ prepareInputForAdd: fill_mode=repeat → total_items=0
+    ↓ redirect → fill.php?id=X
+         ↓
+    [fill.php]
+    ├─ fill_mode=repeat AND total_items=0?
+    │       ↓ renderiza TELA DE POPULATE (PHP inline)
+    │       ↓ usuário escolhe itemtype + subtipo + entidade + localização
+    │       ↓ JS POST → populate.php
+    │             → cria EquipmentAssignment para cada ativo encontrado
+    │             → DocumentService::selectAsset() auto-fill binding keys
+    │             → update total_items no documento
+    │       ↓ JS redireciona → fill.php?id=X (agora total_items > 0)
+    │
+    └─ fill_mode=single OR total_items>0?
+            ↓ renderiza WIZARD JS normal
+            ↓ para cada item_index:
+                  → FieldRenderer.renderAssetSelector() [UI já existe]
+                  → usuário digita → WizardApp dispara search() → mostra resultados
+                  → usuário clica resultado → WizardApp chama AssetSelector.selectAsset()
+                  → POST select-asset.php → retorna filled[]
+                  → WizardApp atualiza this.values + re-renderiza campos do item
+                  → usuário preenche campos livres → autosave via fill-field.php
+            ↓ botão "Gerar PDF" → PdfGeneratorClient.enqueue()
+```
+
+---
+
+### Passo 1 — `PdfDocument.php`: showForm() e prepareInputForAdd()
+
+**Arquivo:** `plugins/smartdocs/src/Documents/PdfDocument.php`
+
+**1a. `showForm()`**
+
+```php
+public function showForm($ID, array $options = []): bool
+{
+    $templateOptions = $options['template_options'] ?? [];
+
+    $this->initForm($ID, $options);
+    $this->showFormHeader($options);
+
+    // Nome
+    echo "<tr class='tab_bg_1'><td>" . __('Nome', 'smartdocs') . " *</td><td>";
+    echo Html::input('name', ['value' => $this->fields['name'] ?? '', 'required' => true]);
+    echo "</td></tr>";
+
+    // Template base
+    echo "<tr class='tab_bg_1'><td>" . __('Template PDF base', 'smartdocs') . " *</td><td>";
+    echo Dropdown::showFromArray('pdf_templates_id', $templateOptions,
+        ['value' => $this->fields['pdf_templates_id'] ?? 0, 'display' => false,
+         'id' => 'smartdocs-template-select']);
+    echo "</td></tr>";
+
+    // Quantidade de itens (oculto se fill_mode=repeat — JS controla)
+    echo "<tr class='tab_bg_1' id='smartdocs-total-items-row'>";
+    echo "<td>" . __('Quantidade de itens', 'smartdocs') . "</td><td>";
+    echo Html::input('total_items', ['type' => 'number', 'min' => '1',
+        'value' => $this->fields['total_items'] ?? 1, 'id' => 'smartdocs-total-items']);
+    echo "</td></tr>";
+
+    $this->showFormButtons($options);
+
+    // JS: ao trocar template, chama get-template.php → oculta/exibe total_items
+    $ajaxUrl = Plugin::getWebDir('smartdocs') . '/ajax/get-template.php';
+    echo "<script>
+    document.getElementById('smartdocs-template-select').addEventListener('change', function() {
+        const id = this.value;
+        if (!id) return;
+        fetch('" . $ajaxUrl . "?id=' + id)
+            .then(r => r.json())
+            .then(data => {
+                const row = document.getElementById('smartdocs-total-items-row');
+                const input = document.getElementById('smartdocs-total-items');
+                if (data.data && data.data.fill_mode === 'repeat') {
+                    row.style.display = 'none';
+                    input.value = '0';
+                } else {
+                    row.style.display = '';
+                    if (input.value === '0') input.value = '1';
+                }
+            });
+    });
+    </script>";
+
+    return true;
+}
+```
+
+**1b. `prepareInputForAdd()` — adicionar ao existente (após validação do nome):**
+
+```php
+// Valida template e extrai version + fill_mode
+$templateId = (int) ($input['pdf_templates_id'] ?? 0);
+if ($templateId <= 0) {
+    \Session::addMessageAfterRedirect(
+        __('Selecione um template PDF.', 'smartdocs'), false, ERROR
+    );
+    return false;
+}
+
+$tplData = (new \GlpiPlugin\SmartDocs\Templates\TemplateRepository())->findById($templateId);
+if ($tplData === null || $tplData['status'] !== \GlpiPlugin\SmartDocs\Templates\PdfTemplate::STATUS_PUBLISHED) {
+    \Session::addMessageAfterRedirect(
+        __('Template inválido ou não publicado.', 'smartdocs'), false, ERROR
+    );
+    return false;
+}
+
+$input['pdf_templates_id'] = $templateId;
+$input['template_version']  = (int) $tplData['version'];
+
+// fill_mode=repeat: total_items definido pelo populate, não pelo usuário
+if ($tplData['fill_mode'] === 'repeat') {
+    $input['total_items'] = 0;
+} elseif (!isset($input['total_items']) || (int) $input['total_items'] < 1) {
+    $input['total_items'] = 1;
+}
+
+// Entidade ativa do usuário
+if (!isset($input['entities_id'])) {
+    $input['entities_id'] = (int) ($_SESSION['glpiactive_entity'] ?? 0);
+}
+```
+
+---
+
+### Passo 2 — `pdfdocument.form.php`: redirect e template_options
+
+**Arquivo:** `plugins/smartdocs/front/pdfdocument.form.php`
+
+Duas mudanças:
+
+**2a. Bloco POST `add` — fix redirect:**
+
+```php
+if (isset($_POST['add'])) {
+    // ... check rights ...
+    $doc->check(-1, CREATE, $_POST);
+    $newId = $doc->add($_POST);
+    if ($newId === false) {
+        Html::back();
+    } else {
+        Html::redirect(
+            GlpiPlugin\SmartDocs\GlpiCompat\MenuHelper::frontUrl('pdfdocument.fill.php?id=' . $newId)
+        );
+    }
+}
+```
+
+**2b. Bloco GET — passar template_options para showForm:**
+
+```php
+} else {
+    $doc->showForm(0, ['template_options' => $templateOptions]);
+}
+```
+
+---
+
+### Passo 3 — `pdfdocument.fill.php`: detectar populate step
+
+**Arquivo:** `plugins/smartdocs/front/pdfdocument.fill.php`
+
+Inserir após carregar `$doc` e antes de `Html::header()`:
+
+```php
+$needsPopulate = $template->fields['fill_mode'] === 'repeat'
+    && (int) $doc->fields['total_items'] === 0;
+
+if ($needsPopulate) {
+    Html::header(/* ... */);
+    echo renderPopulateStep($doc, $template);
+    Html::footer();
+    exit;
+}
+```
+
+**Função `renderPopulateStep()` (pode ser local no arquivo):**
+
+```php
+function renderPopulateStep($doc, $template): string
+{
+    $ajaxBase = Plugin::getWebDir('smartdocs') . '/ajax/';
+    $fillUrl  = GlpiPlugin\SmartDocs\GlpiCompat\MenuHelper::frontUrl('pdfdocument.fill.php?id=' . $doc->fields['id']);
+
+    $assetTypes = [
+        'Computer'         => __('Computadores'),
+        'Peripheral'       => __('Periféricos'),
+        'Printer'          => __('Impressoras'),
+        'Monitor'          => __('Monitores'),
+        'NetworkEquipment' => __('Equipamentos de rede'),
+        'Phone'            => __('Telefones'),
+    ];
+    $typeOptions = '';
+    foreach ($assetTypes as $k => $v) {
+        $typeOptions .= "<option value='{$k}'>{$v}</option>";
+    }
+
+    // Entidades visíveis pelo usuário
+    $entities = Dropdown::getDropdownArrayNames('glpi_entities',
+        getAncestorsOf('glpi_entities', $_SESSION['glpiactive_entity'] ?? 0)
+        + [0 => 0]);
+
+    $entityOptions = '';
+    foreach ($entities as $id => $name) {
+        $sel = ($id == ($_SESSION['glpiactive_entity'] ?? 0)) ? 'selected' : '';
+        $entityOptions .= "<option value='{$id}' {$sel}>" . htmlspecialchars($name) . "</option>";
+    }
+
+    return "
+    <div class='container-fluid py-3'>
+      <h2><i class='ti ti-list-check'></i> " . __('Selecionar equipamentos', 'smartdocs') . "</h2>
+      <p class='text-muted'>" . sprintf(__('Documento: <strong>%s</strong> — Template: <strong>%s</strong>', 'smartdocs'),
+          htmlspecialchars($doc->fields['name']), htmlspecialchars($template->fields['name'])) . "</p>
+      <div class='card'>
+        <div class='card-body'>
+          <div class='row g-3'>
+            <div class='col-md-4'>
+              <label class='form-label'>" . __('Tipo de ativo', 'smartdocs') . "</label>
+              <select id='sd-itemtype' class='form-select'>{$typeOptions}</select>
+            </div>
+            <div class='col-md-4'>
+              <label class='form-label'>" . __('Entidade', 'smartdocs') . "</label>
+              <select id='sd-entity' class='form-select'>{$entityOptions}</select>
+            </div>
+            <div class='col-md-4'>
+              <label class='form-label'>" . __('Localização (opcional)', 'smartdocs') . "</label>
+              <select id='sd-location' class='form-select'>
+                <option value='0'>" . __('Todas', 'smartdocs') . "</option>
+              </select>
+            </div>
+          </div>
+          <div class='mt-3'>
+            <button id='sd-preview-btn' class='btn btn-outline-secondary'>
+              <i class='ti ti-eye'></i> " . __('Pré-visualizar', 'smartdocs') . "
+            </button>
+            <button id='sd-populate-btn' class='btn btn-primary ms-2' disabled>
+              <i class='ti ti-bolt'></i> " . __('Populate', 'smartdocs') . "
+            </button>
+          </div>
+          <div id='sd-preview-area' class='mt-3'></div>
+          <div id='sd-populate-status' class='mt-3'></div>
+        </div>
+      </div>
+    </div>
+    <script>
+    (function() {
+      const ajaxBase = '{$ajaxBase}';
+      const docId    = {$doc->fields['id']};
+      const fillUrl  = '{$fillUrl}';
+
+      // Carrega localizações ao mudar entidade
+      document.getElementById('sd-entity').addEventListener('change', loadLocations);
+      loadLocations();
+
+      function loadLocations() {
+        const entityId = document.getElementById('sd-entity').value;
+        fetch(ajaxBase + 'asset-search.php?action=locations&entities_id=' + entityId)
+          .then(r => r.json())
+          .then(data => {
+            const sel = document.getElementById('sd-location');
+            sel.innerHTML = '<option value=\"0\">" . __('Todas', 'smartdocs') . "</option>';
+            (data.locations || []).forEach(l => {
+              sel.innerHTML += '<option value=\"' + l.id + '\">' + l.name + '</option>';
+            });
+          }).catch(() => {});
+      }
+
+      document.getElementById('sd-preview-btn').addEventListener('click', function() {
+        fetchPreview().then(data => {
+          const area = document.getElementById('sd-preview-area');
+          if (!data.assets || data.assets.length === 0) {
+            area.innerHTML = '<div class=\"alert alert-warning\">" . __('Nenhum ativo encontrado.', 'smartdocs') . "</div>';
+            document.getElementById('sd-populate-btn').disabled = true;
+          } else {
+            let rows = data.assets.map(a =>
+              '<tr><td>' + escHtml(a.name) + '</td><td>' + escHtml(a.serial || '—') + '</td></tr>'
+            ).join('');
+            area.innerHTML = '<p><strong>' + data.assets.length + ' " . __('ativos encontrados', 'smartdocs') . "</strong></p>'
+              + '<div style=\"max-height:300px;overflow:auto\"><table class=\"table table-sm\">'
+              + '<thead><tr><th>" . __('Nome', 'smartdocs') . "</th><th>" . __('Serial', 'smartdocs') . "</th></tr></thead>'
+              + '<tbody>' + rows + '</tbody></table></div>';
+            document.getElementById('sd-populate-btn').disabled = false;
+          }
+        });
+      });
+
+      document.getElementById('sd-populate-btn').addEventListener('click', function() {
+        this.disabled = true;
+        const status = document.getElementById('sd-populate-status');
+        status.innerHTML = '<div class=\"alert alert-info\">" . __('Populando...', 'smartdocs') . "</div>';
+        const params = collectParams();
+        fetch(ajaxBase + 'populate.php', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({document_id: docId, ...params})
+        })
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            status.innerHTML = '<div class=\"alert alert-success\">' + data.total_items + ' " . __('equipamentos vinculados. Abrindo wizard...', 'smartdocs') . "</div>';
+            setTimeout(() => window.location.href = fillUrl, 800);
+          } else {
+            status.innerHTML = '<div class=\"alert alert-danger\">' + escHtml(data.error || 'Erro') + '</div>';
+            document.getElementById('sd-populate-btn').disabled = false;
+          }
+        })
+        .catch(() => {
+          status.innerHTML = '<div class=\"alert alert-danger\">" . __('Falha de rede.', 'smartdocs') . "</div>';
+          document.getElementById('sd-populate-btn').disabled = false;
+        });
+      });
+
+      function fetchPreview() {
+        const params = collectParams();
+        return fetch(ajaxBase + 'populate.php', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({document_id: docId, preview: true, ...params})
+        }).then(r => r.json());
+      }
+
+      function collectParams() {
+        return {
+          itemtype:    document.getElementById('sd-itemtype').value,
+          entities_id: document.getElementById('sd-entity').value,
+          locations_id: document.getElementById('sd-location').value,
+        };
+      }
+
+      function escHtml(s) {
+        const d = document.createElement('div');
+        d.textContent = String(s || '');
+        return d.innerHTML;
+      }
+    })();
+    </script>
+    ";
+}
+```
+
+---
+
+### Passo 4 — `ajax/populate.php` (novo)
+
+```php
+<?php
+include('../../../inc/includes.php');
+header('Content-Type: application/json; charset=UTF-8');
+Session::checkLoginUser();
+GlpiPlugin\SmartDocs\Permissions\PermissionManager::checkRight(
+    GlpiPlugin\SmartDocs\Permissions\PermissionManager::SMARTDOCS_DOCUMENT_WRITE
+);
+
+$input = json_decode(file_get_contents('php://input'), true);
+
+$documentId  = (int) ($input['document_id']  ?? 0);
+$itemtype    = $input['itemtype']    ?? '';
+$entitiesId  = (int) ($input['entities_id']  ?? 0);
+$locationsId = (int) ($input['locations_id'] ?? 0);
+$preview     = (bool) ($input['preview']     ?? false);
+
+if ($documentId <= 0 || empty($itemtype)) {
+    http_response_code(422);
+    echo json_encode(['success' => false, 'error' => 'Dados incompletos.']);
+    exit;
+}
+
+if (!class_exists($itemtype) || !is_subclass_of($itemtype, 'CommonDBTM')) {
+    http_response_code(422);
+    echo json_encode(['success' => false, 'error' => 'Tipo de ativo inválido.']);
+    exit;
+}
+
+global $DB;
+
+// Verifica documento
+$doc = new GlpiPlugin\SmartDocs\Documents\PdfDocument();
+if (!$doc->getFromDB($documentId)) {
+    http_response_code(404);
+    echo json_encode(['success' => false, 'error' => 'Documento não encontrado.']);
+    exit;
+}
+
+if ((int) $doc->fields['total_items'] !== 0) {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'error' => 'Documento já foi populado.']);
+    exit;
+}
+
+// Monta WHERE para busca de ativos
+$where = ['is_deleted' => 0];
+if ($entitiesId > 0) {
+    $where['entities_id'] = $entitiesId;
+}
+if ($locationsId > 0) {
+    $where['locations_id'] = $locationsId;
+}
+
+$iterator = $DB->request([
+    'SELECT' => ['id', 'name', 'serial', 'otherserial'],
+    'FROM'   => $itemtype::getTable(),
+    'WHERE'  => $where,
+    'ORDER'  => 'name ASC',
+]);
+
+$assets = [];
+foreach ($iterator as $row) {
+    $assets[] = $row;
+}
+
+if ($assets === []) {
+    echo json_encode(['success' => false, 'error' => __('Nenhum ativo encontrado com esses filtros.', 'smartdocs')]);
+    exit;
+}
+
+// Modo preview: retorna lista sem criar assignments
+if ($preview) {
+    echo json_encode(['success' => true, 'assets' => $assets]);
+    exit;
+}
+
+// Modo execute: cria assignments + auto-fill binding keys
+$assignment = new GlpiPlugin\SmartDocs\Documents\EquipmentAssignment();
+$service    = new GlpiPlugin\SmartDocs\Documents\DocumentService();
+$itemIndex  = $assignment->nextItemIndex($documentId);
+
+foreach ($assets as $asset) {
+    $assignment->addAssignment($documentId, $itemtype, (int) $asset['id'], $itemIndex, []);
+    try {
+        $service->selectAsset($documentId, $itemIndex, $itemtype, (int) $asset['id']);
+    } catch (\Exception $e) {
+        // binding keys opcionais — falha não bloqueia
+    }
+    $itemIndex++;
+}
+
+$totalItems = count($assets);
+
+$DB->update(GlpiPlugin\SmartDocs\Documents\PdfDocument::getTable(), [
+    'total_items' => $totalItems,
+    'date_mod'    => $_SESSION['glpi_currenttime'] ?? date('Y-m-d H:i:s'),
+], ['id' => $documentId]);
+
+// Atualiza nextItemIndex no metadata
+$doc->getFromDB($documentId);
+$meta = $doc->getMetadata();
+$meta['nextItemIndex'] = $itemIndex;
+$DB->update(GlpiPlugin\SmartDocs\Documents\PdfDocument::getTable(), [
+    'metadata' => json_encode($meta),
+], ['id' => $documentId]);
+
+echo json_encode(['success' => true, 'total_items' => $totalItems]);
+```
+
+---
+
+### Passo 5 — `AssetSelector.js`: adicionar selectAsset()
+
+**Arquivo:** `plugins/smartdocs/js-src/wizard/AssetSelector.js`
+
+Adicionar método ao final da classe:
+
+```js
+async selectAsset(documentId, itemIndex, itemtype, itemsId) {
+  const response = await fetch(`${this.ajaxUrl}select-asset.php`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      document_id: documentId,
+      item_index:  itemIndex,
+      itemtype,
+      items_id:    itemsId,
+    }),
+  });
+  if (!response.ok) throw new Error(`select-asset failed: ${response.status}`);
+  return response.json(); // { success, filled: [{field_id, value}] }
+}
+```
+
+---
+
+### Passo 6 — `WizardApp.js`: wirar busca e seleção de ativo
+
+**Arquivo:** `plugins/smartdocs/js-src/wizard/WizardApp.js`
+
+**6a. `bindEvents()` — adicionar handlers para asset search:**
+
+```js
+// Busca de ativo
+if (e.target.closest('[data-action="search-asset"]')) {
+  e.preventDefault();
+  const itemIndex = parseInt(e.target.closest('[data-action="search-asset"]').dataset.item, 10);
+  this.handleAssetSearch(itemIndex);
+  return;
+}
+
+// Seleção de resultado
+if (e.target.closest('[data-action="select-asset"]')) {
+  e.preventDefault();
+  const btn = e.target.closest('[data-action="select-asset"]');
+  this.handleAssetSelect(
+    parseInt(btn.dataset.item, 10),
+    btn.dataset.itemtype,
+    parseInt(btn.dataset.itemsid, 10),
+    btn.dataset.name,
+  );
+  return;
+}
+```
+
+**6b. Métodos novos em WizardApp:**
+
+```js
+async handleAssetSearch(itemIndex) {
+  const input = this.root.querySelector(`#asset-search-${itemIndex}`);
+  const query = input ? input.value.trim() : '';
+  const resultsDiv = this.root.querySelector(`#asset-results-${itemIndex}`);
+  if (!resultsDiv) return;
+
+  resultsDiv.innerHTML = '<small class="text-muted">Buscando...</small>';
+
+  const types = this.data.asset_types || ['Computer', 'Peripheral', 'Printer', 'Monitor', 'NetworkEquipment', 'Phone'];
+  const results = await this.assetSelector.search(query, types);
+
+  if (results.length === 0) {
+    resultsDiv.innerHTML = '<small class="text-muted">Nenhum resultado.</small>';
+    return;
+  }
+
+  const rows = results.map(r => `
+    <button type="button" class="list-group-item list-group-item-action"
+            data-action="select-asset" data-item="${itemIndex}"
+            data-itemtype="${this.escapeAttr(r.itemtype)}"
+            data-itemsid="${r.id}"
+            data-name="${this.escapeAttr(r.name)}">
+      <strong>${this.escapeHtml(r.name)}</strong>
+      ${r.serial ? `<small class="text-muted ms-2">S/N: ${this.escapeHtml(r.serial)}</small>` : ''}
+    </button>
+  `).join('');
+
+  resultsDiv.innerHTML = `<div class="list-group mt-1">${rows}</div>`;
+}
+
+async handleAssetSelect(itemIndex, itemtype, itemsId, name) {
+  const resultsDiv = this.root.querySelector(`#asset-results-${itemIndex}`);
+  if (resultsDiv) {
+    resultsDiv.innerHTML = `<div class="alert alert-success py-1">
+      <i class="ti ti-check"></i> ${this.escapeHtml(name)}
+    </div>`;
+  }
+
+  try {
+    const data = await this.assetSelector.selectAsset(
+      this.data.document_id, itemIndex, itemtype, itemsId
+    );
+
+    if (data.success && data.filled) {
+      data.filled.forEach(f => {
+        const key = `${f.field_id}:${itemIndex}`;
+        this.values[key] = f.value ?? '';
+      });
+      // Re-renderiza campos do item atual para mostrar valores preenchidos
+      const container = this.root.querySelector('#wizard-fields-container');
+      if (container) {
+        container.innerHTML = this.renderer.renderFieldsForItem(this.currentItem);
+      }
+    }
+  } catch (e) {
+    console.warn('[SmartDocs] Erro ao selecionar ativo:', e);
+  }
+}
+
+escapeAttr(text) {
+  return String(text ?? '').replace(/"/g, '&quot;');
+}
+```
+
+---
+
+### Ordem de execução
+
+| Ordem | Arquivo | Tipo |
+|---|---|---|
+| 1 | `src/Documents/PdfDocument.php` | Modificar |
+| 2 | `front/pdfdocument.form.php` | Modificar |
+| 3 | `front/pdfdocument.fill.php` | Modificar |
+| 4 | `ajax/populate.php` | Criar |
+| 5 | `js-src/wizard/AssetSelector.js` | Modificar |
+| 6 | `js-src/wizard/WizardApp.js` | Modificar |
+| 7 | `pnpm build` (recompila wizard.bundle.js) | Build |
+
+### Verificação manual após implementação
+
+1. `fill_mode=repeat`: criar doc → tela populate aparece → preview mostra N ativos → Populate → wizard abre com N grupos preenchidos por binding keys
+2. `fill_mode=single`: criar doc com N=3 → wizard abre com 3 grupos → buscar ativo em cada grupo → campos binding preenchem → campos livres manuais → Gerar PDF
+3. Nenhum template publicado → empty state (já funciona)
+4. Template inválido no POST → flash error + volta para form
+5. `$newId=false` → volta para form sem redirect quebrado
+
+---
+
+## Apêndice 15 — Correção de Bugs: Criação de Documento PDF
+
+### Diagnóstico
+
+O fluxo de criação de novo `PdfDocument` tem **5 bugs** encadeados que impedem qualquer criação bem-sucedida.
+
+---
+
+### Bug 1 — `showForm()` não existe em `PdfDocument`
+
+**Arquivo:** `plugins/smartdocs/front/pdfdocument.form.php:95`
+**Causa:** `$doc->showForm(0)` é chamado mas `PdfDocument` não implementa o método.  
+**Efeito:** PHP fatal / retorno vazio — formulário nunca renderiza.  
+**Fix:** implementar `PdfDocument::showForm(int $ID, array $options = []): bool` usando `initForm()` / `showFormHeader()` / `showFormButtons()` padrão GLPI, com campos `name`, `pdf_templates_id` (dropdown dos templates publicados) e `total_items` (input numérico, padrão 1).
+
+O front (`pdfdocument.form.php`) já busca `$templateOptions` e passa o contexto antes de chamar `showForm`. A forma mais limpa é passar esses dados via `$options['template_options']` para evitar query duplicada:
+
+```php
+// pdfdocument.form.php — antes de showForm(0)
+$doc->showForm(0, ['template_options' => $templateOptions]);
+```
+
+```php
+// PdfDocument::showForm()
+public function showForm($ID, array $options = []): bool
+{
+    $templateOptions = $options['template_options'] ?? [];
+
+    $this->initForm($ID, $options);
+    $this->showFormHeader($options);
+
+    // Campo: nome
+    echo "<tr class='tab_bg_1'><td>" . __('Nome', 'smartdocs') . "</td><td>";
+    echo Html::input('name', ['value' => $this->fields['name'] ?? '', 'required' => true]);
+    echo "</td></tr>";
+
+    // Campo: template base
+    echo "<tr class='tab_bg_1'><td>" . __('Template PDF base', 'smartdocs') . "</td><td>";
+    echo Dropdown::showFromArray('pdf_templates_id', $templateOptions,
+        ['value' => $this->fields['pdf_templates_id'] ?? 0, 'display' => false]);
+    echo "</td></tr>";
+
+    // Campo: quantidade de itens
+    echo "<tr class='tab_bg_1'><td>" . __('Quantidade de itens', 'smartdocs') . "</td><td>";
+    echo Html::input('total_items', [
+        'type'  => 'number',
+        'min'   => '1',
+        'value' => $this->fields['total_items'] ?? 1,
+    ]);
+    echo "</td></tr>";
+
+    $this->showFormButtons($options);
+    return true;
+}
+```
+
+---
+
+### Bug 2 — `prepareInputForAdd()` não valida nem preenche `pdf_templates_id`
+
+**Arquivo:** `plugins/smartdocs/src/Documents/PdfDocument.php:169`  
+**Causa:** o método só valida `name`; `pdf_templates_id` (NOT NULL no schema) nunca é validado nem sanitizado.  
+**Efeito:** `$DB->insert()` falha com erro MySQL ("Field 'pdf_templates_id' doesn't have a default value") e `$doc->add()` retorna `false`.
+
+---
+
+### Bug 3 — `template_version` nunca é definido
+
+**Arquivo:** `plugins/smartdocs/src/Documents/PdfDocument.php:169`  
+**Causa:** `template_version` é NOT NULL no schema mas `prepareInputForAdd()` nunca o popula.  
+**Efeito:** mesmo erro MySQL do Bug 2 se `pdf_templates_id` fosse corrigido isoladamente.
+
+**Fix para Bugs 2 e 3 juntos** — acrescentar ao `prepareInputForAdd()`:
+
+```php
+// Valida e resolve pdf_templates_id + template_version
+$templateId = (int) ($input['pdf_templates_id'] ?? 0);
+if ($templateId <= 0) {
+    \Session::addMessageAfterRedirect(
+        __('Selecione um template PDF.', 'smartdocs'),
+        false,
+        ERROR
+    );
+    return false;
+}
+
+$templateData = (new \GlpiPlugin\SmartDocs\Templates\TemplateRepository())->findById($templateId);
+if ($templateData === null || $templateData['status'] !== \GlpiPlugin\SmartDocs\Templates\PdfTemplate::STATUS_PUBLISHED) {
+    \Session::addMessageAfterRedirect(
+        __('Template inválido ou não publicado.', 'smartdocs'),
+        false,
+        ERROR
+    );
+    return false;
+}
+
+$input['pdf_templates_id'] = $templateId;
+$input['template_version'] = (int) $templateData['version'];
+```
+
+---
+
+### Bug 4 — Redirect inválido quando `$doc->add()` retorna `false`
+
+**Arquivo:** `plugins/smartdocs/front/pdfdocument.form.php:29`  
+**Causa:**
+```php
+$newId = $doc->add($_POST);
+Html::redirect($doc->getFormURLWithID($newId)); // $newId pode ser false
+```
+`getFormURLWithID(false)` gera `pdfdocument.form.php?id=` — URL inválida.  
+**Fix:**
+```php
+$newId = $doc->add($_POST);
+if ($newId === false) {
+    Html::back();
+} else {
+    Html::redirect(
+        GlpiPlugin\SmartDocs\GlpiCompat\MenuHelper::frontUrl('pdfdocument.fill.php?id=' . $newId)
+    );
+}
+```
+Isso também elimina o **double redirect** desnecessário (form.php → form.php?id=X → fill.php).
+
+---
+
+### Bug 5 — `entities_id` não definido no documento criado
+
+**Arquivo:** `plugins/smartdocs/src/Documents/PdfDocument.php:169`  
+**Causa:** `prepareInputForAdd()` não define `entities_id`; o GLPI não o injeta automaticamente em plugins sem `userentities`.  
+**Efeito:** documento fica com `entities_id = 0` independente da entidade ativa do usuário; filtros por entidade não funcionam.  
+**Fix:** acrescentar ao `prepareInputForAdd()`:
+
+```php
+if (!isset($input['entities_id'])) {
+    $input['entities_id'] = (int) ($_SESSION['glpiactive_entity'] ?? 0);
+}
+```
+
+---
+
+### Aviso — Bug pré-existente em `TemplateRepository::findPublished()`
+
+**Arquivo:** `plugins/smartdocs/src/Templates/TemplateRepository.php:45`  
+**Causa:** query usa `'entities_id' => $entityId` (match exato), ignorando templates de entidades pai com `is_recursive = 1`.  
+**Efeito:** usuários em sub-entidades não veem templates publicados na entidade raiz.  
+**Fix futuro:** substituir a cláusula WHERE por `getEntitiesRestrictRequest(PdfTemplate::getTable())` do GLPI, que resolve herança recursiva automaticamente. Não bloqueia o fluxo atual se tudo estiver na entidade raiz (0).
+
+---
+
+### Ordem de implementação recomendada
+
+| # | Arquivo | Mudança |
+|---|---------|---------|
+| 1 | `PdfDocument.php` | Adicionar `showForm()` |
+| 2 | `PdfDocument.php` | Completar `prepareInputForAdd()` (Bugs 2, 3, 5) |
+| 3 | `pdfdocument.form.php` | Passar `template_options` para `showForm()` + fix redirect (Bug 4) |
+| 4 | `TemplateRepository.php` | Corrigir escopo de entidade (aviso — baixa prioridade) |
+
+---
+
+### Status de Implementação
+
+Todas as correções foram aplicadas nos arquivos-fonte do plugin:
+
+| # | Arquivo | Mudança aplicada | Status |
+|---|---------|------------------|--------|
+| 1 | `src/Documents/PdfDocument.php` | Adicionado `showForm($ID, array $options = []): bool` com `initForm()`, `showFormHeader()`, campos `name`, `pdf_templates_id` (dropdown via `$options['template_options']`), `total_items` (input numérico), e `showFormButtons()` | ✅ Aplicado |
+| 2 | `src/Documents/PdfDocument.php` | `prepareInputForAdd()` — validação de `pdf_templates_id` (obrigatório, lookup por `TemplateRepository::findById()`, checagem `status === PUBLISHED`), preenchimento de `template_version` e `entities_id` | ✅ Aplicado |
+| 3 | `front/pdfdocument.form.php` | Passagem de `$templateOptions` via `['template_options' => $templateOptions]`; redirect com checagem `$newId === false` → `Html::back()`, senão redirect direto para `fill.php` (elimina double redirect) | ✅ Aplicado |
+| 4 | `src/Templates/TemplateRepository.php` | `findPublished()` — substituído match exato de `entities_id` por `getEntitiesRestrictCriteria(PdfTemplate::getTable(), '', $entityId, true)` que resolve herança recursiva (`is_recursive`) | ✅ Aplicado |
+
+### Validação das regras GLPI (99-Rules.md)
+
+- ✅ APIs públicas do GLPI — `initForm`, `showFormHeader`, `Dropdown::showFromArray`, `Html::input`, `Session::addMessageAfterRedirect`, `getEntitiesRestrictCriteria`
+- ✅ Query builder (`$DB->request`) — nenhum SQL raw
+- ✅ `__()` em toda string visível com domínio `'smartdocs'`
+- ✅ `declare(strict_types=1)` presente em todos os arquivos
+- ✅ Namespace `GlpiPlugin\SmartDocs\` mantido
+- ✅ Tipagem em parâmetros e retornos
+- ✅ Multi-entidade respeitada via `getEntitiesRestrictCriteria`
+
+### Avaliação do plano original
+
+O plano proposto identifica corretamente os dois pontos centrais (`showForm()` ausente e `prepareInputForAdd()` incompleto) e o tratamento do `$newId === false`. As adições deste apêndice são:
+
+- **Bug 5** (`entities_id` não preenchido) — omitido no plano original, implementado na correção
+- **Double redirect** eliminado via redirect direto para `fill.php` — melhora UX
+- **Passagem de `$options['template_options']`** — evita query duplicada entre front e model
+- **Aviso de escopo de entidade** em `findPublished()` — bug silencioso pré-existente, corrigido na implementação (não apenas documentado como "fix futuro")

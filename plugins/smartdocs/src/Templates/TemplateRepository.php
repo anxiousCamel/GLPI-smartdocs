@@ -48,12 +48,19 @@ final class TemplateRepository
         global $DB;
 
         $templates = [];
+        $where = [
+            'status' => PdfTemplate::STATUS_PUBLISHED,
+        ];
+
+        // Aplica restrição de entidade respeitando is_recursive
+        $entityCriteria = getEntitiesRestrictCriteria(PdfTemplate::getTable(), '', $entityId, true);
+        if (!empty($entityCriteria)) {
+            $where = array_merge($where, $entityCriteria);
+        }
+
         $iterator = $DB->request([
             'FROM'   => PdfTemplate::getTable(),
-            'WHERE'  => [
-                'status'     => PdfTemplate::STATUS_PUBLISHED,
-                'entities_id' => $entityId,
-            ],
+            'WHERE'  => $where,
             'ORDER'  => 'name ASC',
         ]);
 

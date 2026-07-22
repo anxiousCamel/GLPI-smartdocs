@@ -7,9 +7,10 @@
  */
 
 export class PropertiesPanel {
-  constructor(container, onUpdate) {
+  constructor(container, onUpdate, bindingKeys = []) {
     this.container = container;
     this.onUpdate = onUpdate;
+    this.bindingKeys = bindingKeys;
     this.currentFields = [];
     this.renderEmpty();
   }
@@ -82,7 +83,7 @@ export class PropertiesPanel {
         <input type="text" id="prop-label" value="${this.escape(field.label || '')}">
       </div>
 
-      <div class="prop-group">
+      <div class="prop-group" id="prop-group-wrapper" style="${field.scope === 'global' ? 'display:none' : ''}">
         <label>Grupo (equipamento)</label>
         <div class="d-flex align-items-center gap-2">
           <span id="prop-group-swatch" class="prop-group-swatch" style="background:${this.groupColor(field.group_label).stroke}"></span>
@@ -92,32 +93,16 @@ export class PropertiesPanel {
         </div>
         <input type="text" id="prop-group-new" class="mt-2" placeholder="Nome do novo grupo (ex.: Compressor 1)" style="display:none">
         <small class="text-muted">Campos no mesmo grupo formam um equipamento — mesma etiqueta (G1, G2...) e cor na folha.</small>
+        <small id="prop-slot-info" class="text-muted d-block"></small>
       </div>
 
       <div class="prop-group">
         <label>Binding Key</label>
         <select id="prop-binding">
-          <option value="">— Manual —</option>
-          <optgroup label="Equipamento">
-            <option value="eq.serie" ${field.binding_key === 'eq.serie' ? 'selected' : ''}>Número de série</option>
-            <option value="eq.patrimonio" ${field.binding_key === 'eq.patrimonio' ? 'selected' : ''}>Patrimônio</option>
-            <option value="eq.modelo" ${field.binding_key === 'eq.modelo' ? 'selected' : ''}>Modelo</option>
-            <option value="eq.numero" ${field.binding_key === 'eq.numero' ? 'selected' : ''}>Nome/Ativo</option>
-            <option value="eq.ip" ${field.binding_key === 'eq.ip' ? 'selected' : ''}>IP</option>
-            <option value="eq.localizacao" ${field.binding_key === 'eq.localizacao' ? 'selected' : ''}>Localização</option>
-          </optgroup>
-          <optgroup label="Chamado">
-            <option value="ticket.id" ${field.binding_key === 'ticket.id' ? 'selected' : ''}>ID do chamado</option>
-            <option value="ticket.titulo" ${field.binding_key === 'ticket.titulo' ? 'selected' : ''}>Título do chamado</option>
-          </optgroup>
-          <optgroup label="Usuário">
-            <option value="user.nome" ${field.binding_key === 'user.nome' ? 'selected' : ''}>Nome do técnico</option>
-            <option value="user.email" ${field.binding_key === 'user.email' ? 'selected' : ''}>E-mail do técnico</option>
-          </optgroup>
-          <optgroup label="Entidade">
-            <option value="entity.nome" ${field.binding_key === 'entity.nome' ? 'selected' : ''}>Nome da entidade</option>
-          </optgroup>
+          ${this.buildBindingOptions(field.binding_key)}
         </select>
+        <input type="text" id="prop-binding-custom" class="mt-2" placeholder="ex.: eq.campo_customizado" style="display:none">
+        <small class="text-muted">Selecione um campo do GLPI ou digite uma chave customizada.</small>
       </div>
 
       ${field.type === 'text' ? this.renderFontControls(cfg) : ''}
@@ -164,6 +149,46 @@ export class PropertiesPanel {
     `;
 
     this.bindSingleInputs();
+  }
+
+  /**
+   * Constrói as opções do dropdown de Binding Key dinamicamente a partir
+   * das categorias fornecidas pelo backend. Suporta chaves customizadas.
+   */
+  buildBindingOptions(selectedKey) {
+    const allKnownValues = new Set();
+    let html = `<option value="">— Manual —</option>`;
+
+    // Gera optgroups dinamicamente a partir do backend
+    this.bindingKeys.forEach((category) => {
+      if (!category.keys || category.keys.length === 0) return;
+      html += `<optgroup label="${this.escape(category.label)}">`;
+      category.keys.forEach((key) => {
+        allKnownValues.add(key.value);
+        const sel = selectedKey === key.value ? 'selected' : '';
+        html += `<option value="${this.escape(key.value)}" ${sel}>${this.escape(key.label)}</option>`;
+      });
+      html += `</optgroup>`;
+    });
+
+    // Se a chave selecionada não está na lista → custom
+    const isCustom = selectedKey && !allKnownValues.has(selectedKey);
+    html += `<optgroup label="${this.escape('Outro')}">`;
+    html += `<option value="__custom__" ${isCustom ? 'selected' : ''}>— Customizado / Outro —</option>`;
+    html += `</optgroup>`;
+
+    // Agendamento: após renderizar, preencher input custom se necessário
+    if (isCustom) {
+      requestAnimationFrame(() => {
+        const customInput = document.getElementById('prop-binding-custom');
+        if (customInput) {
+          customInput.style.display = 'block';
+          customInput.value = selectedKey;
+        }
+      });
+    }
+
+    return html;
   }
 
   /**
@@ -276,6 +301,24 @@ export class PropertiesPanel {
     this.bindGroupNewToggle('prop-group-select', 'prop-group-new', () => this.emitUpdate());
     document.getElementById('prop-group-new')?.addEventListener('input', () => this.emitUpdate());
 
+    // Toggle do input custom de binding key
+    const bindingSelect = document.getElementById('prop-binding');
+    const bindingCustom = document.getElementById('prop-binding-custom');
+    if (bindingSelect && bindingCustom) {
+      bindingSelect.addEventListener('change', () => {
+        if (bindingSelect.value === '__custom__') {
+          bindingCustom.style.display = 'block';
+          bindingCustom.value = '';
+          bindingCustom.focus();
+        } else {
+          bindingCustom.style.display = 'none';
+          bindingCustom.value = '';
+        }
+        this.emitUpdate();
+      });
+      bindingCustom.addEventListener('input', () => this.emitUpdate());
+    }
+
     document.getElementById('prop-font-bold')?.addEventListener('click', (e) => {
       e.currentTarget.classList.toggle('active');
       this.emitUpdate();
@@ -288,6 +331,31 @@ export class PropertiesPanel {
         this.emitUpdate();
       });
     });
+
+    // Toggle de visibilidade do grupo conforme escopo
+    const scopeSelect = document.getElementById('prop-scope');
+    const groupWrapper = document.getElementById('prop-group-wrapper');
+    const slotInfo = document.getElementById('prop-slot-info');
+    if (scopeSelect && groupWrapper) {
+      const updateSlotInfo = () => {
+        const gsel = document.getElementById('prop-group-select');
+        const gval = gsel ? (gsel.value === '__new__' ? null : (gsel.value || null)) : null;
+        const known = this.knownGroups.find(g => g.label === gval);
+        if (slotInfo) {
+          if (scopeSelect.value === 'item' && known) {
+            slotInfo.textContent = `Slot ${known.index - 1} (G${known.index}) — aparece na posição ${known.index}ª da folha`;
+          } else {
+            slotInfo.textContent = '';
+          }
+        }
+      };
+      scopeSelect.addEventListener('change', () => {
+        groupWrapper.style.display = scopeSelect.value === 'global' ? 'none' : '';
+        updateSlotInfo();
+      });
+      document.getElementById('prop-group-select')?.addEventListener('change', updateSlotInfo);
+      updateSlotInfo();
+    }
 
     document.getElementById('btn-delete-field')?.addEventListener('click', () => {
       this.onUpdate({ __delete: true });
@@ -352,11 +420,34 @@ export class PropertiesPanel {
     const groupSwatch = document.getElementById('prop-group-swatch');
     if (groupSwatch) groupSwatch.style.background = this.groupColor(groupValue).stroke;
 
+    // Binding key: se custom está ativo, pega do input; senão do select
+    const bindingSelect = document.getElementById('prop-binding');
+    const bindingCustom = document.getElementById('prop-binding-custom');
+    let bindingValue = null;
+    if (bindingSelect) {
+      if (bindingSelect.value === '__custom__' && bindingCustom) {
+        bindingValue = bindingCustom.value.trim() || null;
+      } else if (bindingSelect.value) {
+        bindingValue = bindingSelect.value;
+      }
+    }
+
+    const scopeValue = document.getElementById('prop-scope').value;
+
+    // Se escopo é 'item' e não há grupo, força criação automática
+    let finalGroup = groupValue;
+    if (scopeValue === 'item' && !finalGroup) {
+      finalGroup = this.currentFields[0].group_label || this.autoGroupName();
+    }
+    if (scopeValue === 'global') {
+      finalGroup = null;
+    }
+
     const update = {
       label: document.getElementById('prop-label').value,
-      group_label: groupValue,
-      binding_key: document.getElementById('prop-binding').value || null,
-      scope: document.getElementById('prop-scope').value,
+      group_label: finalGroup,
+      binding_key: bindingValue,
+      scope: scopeValue,
       page_index: parseInt(document.getElementById('prop-page').value, 10) || 0,
       position: pos,
     };
@@ -442,6 +533,15 @@ export class PropertiesPanel {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+  }
+
+  /**
+   * Gera um nome de grupo automático quando o usuário muda o escopo
+   * para 'item' mas não selecionou um grupo existente.
+   */
+  autoGroupName() {
+    const maxIndex = this.knownGroups.reduce((max, g) => Math.max(max, g.index), 0);
+    return `Grupo ${maxIndex + 1}`;
   }
 
   t(key) {

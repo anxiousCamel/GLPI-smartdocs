@@ -354,7 +354,8 @@ class TemplateEditor {
 
     this.propertiesPanel = new PropertiesPanel(
       document.getElementById('properties-panel'),
-      (data) => this.canvasEditor.updateSelectedFields(data)
+      (data) => this.canvasEditor.updateSelectedFields(data),
+      this.data.binding_keys || []
     );
 
     this.pdfRenderer = new PdfRenderer(
@@ -550,9 +551,19 @@ class TemplateEditor {
   }
 
   onFieldsChange(fields) {
-    this.fields = fields;
-    this.history.push([...fields]);
-    this.autosave.schedule(fields);
+    const groupIndexMap = this.canvasEditor.getGroupIndexMap();
+    this.fields = fields.map((f) => {
+      const updated = { ...f };
+      if (updated.scope === 'item') {
+        const gi = groupIndexMap.get(updated.group_label);
+        updated.slot_index = gi !== undefined ? gi - 1 : null;
+      } else {
+        updated.slot_index = null;
+      }
+      return updated;
+    });
+    this.history.push([...this.fields]);
+    this.autosave.schedule(this.fields);
     document.getElementById('autosave-status').textContent = 'Modificado';
 
     // Arrastar/redimensionar no canvas muda a posição sem passar pelo

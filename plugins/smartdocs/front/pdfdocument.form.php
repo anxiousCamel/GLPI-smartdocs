@@ -26,7 +26,13 @@ if (isset($_POST['add'])) {
     );
     $doc->check(-1, CREATE, $_POST);
     $newId = $doc->add($_POST);
-    Html::redirect($doc->getFormURLWithID($newId));
+    if ($newId === false) {
+        Html::back();
+    } else {
+        Html::redirect(
+            GlpiPlugin\SmartDocs\GlpiCompat\MenuHelper::frontUrl('pdfdocument.fill.php?id=' . $newId)
+        );
+    }
 } elseif (isset($_POST['update'])) {
     GlpiPlugin\SmartDocs\Permissions\PermissionManager::checkRight(
         GlpiPlugin\SmartDocs\Permissions\PermissionManager::SMARTDOCS_DOCUMENT_WRITE
@@ -92,7 +98,7 @@ if ($templateOptions === []) {
     echo "</a>";
     echo "</div>";
 } else {
-    $doc->showForm(0);
+    $doc->showForm(0, ['template_options' => $templateOptions]);
 }
 
 echo "</div>";

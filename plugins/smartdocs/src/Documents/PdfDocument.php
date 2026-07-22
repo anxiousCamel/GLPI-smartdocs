@@ -177,12 +177,8 @@ final class PdfDocument extends CommonDBTM
             return false;
         }
 
-        $input['name'] = trim($input['name']);
+        $input['name']   = trim($input['name']);
         $input['status'] = self::STATUS_DRAFT;
-
-        if (!isset($input['total_items']) || (int) $input['total_items'] < 1) {
-            $input['total_items'] = 1;
-        }
 
         $input['metadata'] = json_encode([
             'assignments'       => [],
@@ -191,7 +187,85 @@ final class PdfDocument extends CommonDBTM
             'populateFilter'    => [],
         ]);
 
+        // Valida e resolve pdf_templates_id + template_version
+        $templateId = (int) ($input['pdf_templates_id'] ?? 0);
+        if ($templateId <= 0) {
+            \Session::addMessageAfterRedirect(
+                __('Selecione um template PDF.', 'smartdocs'),
+                false,
+                ERROR
+            );
+            return false;
+        }
+
+        $templateData = (new \GlpiPlugin\SmartDocs\Templates\TemplateRepository())->findById($templateId);
+        if ($templateData === null || $templateData['status'] !== \GlpiPlugin\SmartDocs\Templates\PdfTemplate::STATUS_PUBLISHED) {
+            \Session::addMessageAfterRedirect(
+                __('Template inválido ou não publicado.', 'smartdocs'),
+                false,
+                ERROR
+            );
+            return false;
+        }
+
+        $input['pdf_templates_id'] = $templateId;
+        $input['template_version'] = (int) $templateData['version'];
+
+        // fill_mode=repeat: total_items determinado pelo populate, não pelo usuário
+        if ($templateData['fill_mode'] === 'repeat') {
+            $input['total_items'] = 0;
+        } elseif (!isset($input['total_items']) || (int) $input['total_items'] < 1) {
+            $input['total_items'] = 1;
+        }
+
+        // Entidade ativa do usuário
+        if (!isset($input['entities_id'])) {
+            $input['entities_id'] = (int) ($_SESSION['glpiactive_entity'] ?? 0);
+        }
+
         return $input;
+    }
+
+    /**
+     * Renderiza o formulário de criação/edição do documento.
+     *
+     * @param int   $ID
+     * @param array $options
+     * @return bool
+     */
+    public function showForm($ID, array $options = []): bool
+    {
+        $templateOptions = $options['template_options'] ?? [];
+
+        $this->initForm($ID, $options);
+        $this->showFormHeader($options);
+
+        // Campo: nome
+        echo "<tr class='tab_bg_1'><td>" . __('Nome', 'smartdocs') . "</td><td>";
+        echo \Html::input('name', ['value' => $this->fields['name'] ?? '', 'required' => true]);
+        echo "</td></tr>";
+
+        // Campo: template base
+        echo "<tr class='tab_bg_1'><td>" . __('Template PDF base', 'smartdocs') . "</td><td>";
+        echo \Dropdown::showFromArray(
+            'pdf_templates_id',
+            $templateOptions,
+            ['value' => $this->fields['pdf_templates_id'] ?? 0, 'display' => false]
+        );
+        echo "</td></tr>";
+
+        // Campo: quantidade de itens
+        echo "<tr class='tab_bg_1'><td>" . __('Quantidade de itens', 'smartdocs') . "</td><td>";
+        echo \Html::input('total_items', [
+            'type'  => 'number',
+            'min'   => '1',
+            'value' => $this->fields['total_items'] ?? 1,
+        ]);
+        echo "</td></tr>";
+
+        $this->showFormButtons($options);
+
+        return true;
     }
 
     /**
