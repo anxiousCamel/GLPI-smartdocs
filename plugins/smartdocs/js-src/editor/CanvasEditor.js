@@ -247,11 +247,25 @@ export class CanvasEditor {
   groupColor(groupLabel) {
     if (!groupLabel) return DEFAULT_GROUP_COLOR;
 
-    let hash = 0;
-    for (let i = 0; i < groupLabel.length; i++) {
-      hash = groupLabel.charCodeAt(i) + ((hash << 5) - hash);
+    // Nomes de grupo sequenciais (ex.: "Equip 1", "Equip 2"...) diferem só
+    // no último char, e um hash de rolagem simples reflete isso quase
+    // 1:1 no resultado — o hue mod 360 saía a 1-3° de distância entre
+    // grupos, indistinguível a olho. Usa o índice alfabético do grupo
+    // (já calculado em getGroupIndexMap) espaçado pelo ângulo áureo, que
+    // garante grupos vizinhos bem separados no círculo de cores
+    // independente de quão parecido o nome for. Hash do label só entra
+    // como fallback/offset caso o índice ainda não esteja disponível.
+    const index = this.groupIndexMap?.get(groupLabel);
+    let hue;
+    if (index !== undefined) {
+      hue = (index * 137.508) % 360;
+    } else {
+      let hash = 0;
+      for (let i = 0; i < groupLabel.length; i++) {
+        hash = groupLabel.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      hue = Math.abs(hash) % 360;
     }
-    const hue = Math.abs(hash) % 360;
     return {
       stroke: `hsl(${hue}, 65%, 42%)`,
       fill: `hsla(${hue}, 65%, 42%, 0.12)`,
@@ -403,7 +417,14 @@ export class CanvasEditor {
       this.emitSelection();
     });
 
-    resizeHandle.on('dragmove', () => {
+    resizeHandle.on('dragstart', (e) => {
+      e.cancelBubble = true;
+    });
+
+    resizeHandle.on('dragmove', (e) => {
+      // Sem isto, o dragmove do handle borbulha pro 'dragmove' do group
+      // (que trata como se fosse o campo inteiro sendo movido).
+      e.cancelBubble = true;
       // A posição já vem restringida/snapada pelo dragBoundFunc acima —
       // só refletimos ela no retângulo/label, sem reescrever x()/y() aqui.
       const newW = resizeHandle.x();
@@ -414,7 +435,16 @@ export class CanvasEditor {
       this.layer.batchDraw();
     });
 
-    resizeHandle.on('dragend', () => {
+    resizeHandle.on('dragend', (e) => {
+      // Crítico: 'dragend' borbulha do handle (filho) pro group (pai) por
+      // padrão no Konva. Sem cancelBubble, o 'dragend' do GROUP logo
+      // abaixo também disparava em seguida e sobrescrevia f.position
+      // usando node.width()/height() — o tamanho ESTÁTICO do Group (só
+      // setado na criação, nunca atualizado pelo resize) — apagando a
+      // largura/altura recém ajustada e voltando pro valor antigo. X/Y
+      // "sobreviviam" por coincidência (não mudam durante um resize),
+      // por isso só largura/altura pareciam sempre resetar.
+      e.cancelBubble = true;
       this.updateFieldPosition(field.id, {
         x: group.x() / this.pageWidth,
         y: group.y() / this.pageHeight,

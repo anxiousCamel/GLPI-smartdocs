@@ -403,13 +403,24 @@ export class PropertiesPanel {
     this._knownGroups = value;
   }
 
+  /** Mesma fórmula de matiz do CanvasEditor.groupColor — precisa bater com
+   * a cor mostrada no canvas para o swatch aqui fazer sentido. Usa o
+   * índice do grupo (G1, G2...) espaçado pelo ângulo áureo em vez de um
+   * hash do nome, senão grupos com nomes parecidos (ex. "Equip 1"/"Equip
+   * 2") saíam com o mesmo matiz. */
   groupColor(groupLabel) {
     if (!groupLabel) return { stroke: '#206bc4' };
-    let hash = 0;
-    for (let i = 0; i < groupLabel.length; i++) {
-      hash = groupLabel.charCodeAt(i) + ((hash << 5) - hash);
+    const known = this.knownGroups.find(g => g.label === groupLabel);
+    let hue;
+    if (known) {
+      hue = (known.index * 137.508) % 360;
+    } else {
+      let hash = 0;
+      for (let i = 0; i < groupLabel.length; i++) {
+        hash = groupLabel.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      hue = Math.abs(hash) % 360;
     }
-    const hue = Math.abs(hash) % 360;
     return { stroke: `hsl(${hue}, 65%, 42%)` };
   }
 

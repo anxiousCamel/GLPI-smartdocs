@@ -62,9 +62,8 @@ class TemplateEditor {
             <button type="button" class="btn btn-secondary btn-sm" id="btn-redo" title="Refazer (Ctrl+Y)">
               <i class="ti ti-arrow-forward-up"></i>
             </button>
-            <button type="button" class="btn btn-primary btn-sm ms-2" id="btn-publish"
-              ${this.data.status === 'PUBLISHED' ? 'disabled' : ''}>
-              <i class="ti ti-check"></i> Publicar
+            <button type="button" class="btn btn-primary btn-sm ms-2" id="btn-publish">
+              <i class="ti ti-check"></i> ${this.data.status === 'PUBLISHED' ? 'Atualizar publicação' : 'Publicar'}
             </button>
           </div>
         </div>
@@ -595,6 +594,7 @@ class TemplateEditor {
 
   async publish() {
     const btn = document.getElementById('btn-publish');
+    const idleLabel = '<i class="ti ti-check"></i> ' + (this.data.status === 'PUBLISHED' ? 'Atualizar publicação' : 'Publicar');
     btn.disabled = true;
     btn.innerHTML = '<i class="ti ti-loader-2 ti-spin"></i> Publicando...';
 
@@ -602,7 +602,7 @@ class TemplateEditor {
     if (!saved) {
       alert('Não foi possível salvar os campos antes de publicar. Tente novamente.');
       btn.disabled = false;
-      btn.innerHTML = '<i class="ti ti-check"></i> Publicar';
+      btn.innerHTML = idleLabel;
       return;
     }
 
@@ -620,12 +620,12 @@ class TemplateEditor {
       } else {
         alert(json.message || 'Erro ao publicar.');
         btn.disabled = false;
-        btn.innerHTML = '<i class="ti ti-check"></i> Publicar';
+        btn.innerHTML = idleLabel;
       }
     } catch (err) {
       alert('Erro de comunicação: ' + err.message);
       btn.disabled = false;
-      btn.innerHTML = '<i class="ti ti-check"></i> Publicar';
+      btn.innerHTML = idleLabel;
     }
   }
 

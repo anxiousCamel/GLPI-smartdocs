@@ -62,14 +62,22 @@ export class Autosave {
       if (success && statusEl) {
         statusEl.textContent = 'Salvo em ' + new Date().toLocaleTimeString();
       } else if (statusEl) {
-        statusEl.textContent = 'Falha ao salvar';
+        statusEl.textContent = 'Falha ao salvar (tentando de novo em 5s)';
       }
     } catch (err) {
       console.error('[SmartDocs] Autosave falhou:', err);
-      if (statusEl) statusEl.textContent = 'Falha ao salvar';
+      if (statusEl) statusEl.textContent = 'Falha ao salvar (tentando de novo em 5s)';
     }
 
-    this.pendingFields = null;
+    if (success) {
+      this.pendingFields = null;
+    } else {
+      // Mantém pendingFields e reagenda — se não sobrescrevermos com null,
+      // a próxima mudança do usuário (ou este próprio retry) reenvia. Sem
+      // isto o autosave desistia silenciosamente após um único 500/erro de
+      // rede e o rascunho nunca mais salvava até o usuário editar de novo.
+      this.timer = setTimeout(() => this.save(), this.intervalMs);
+    }
 
     return success;
   }

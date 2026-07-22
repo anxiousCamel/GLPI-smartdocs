@@ -95,15 +95,20 @@ final class PdfTemplate extends CommonDBTM
     }
 
     /**
-     * Publica o template: muda status para PUBLISHED e cria snapshot
-     * dos campos em PdfTemplateVersion.
+     * Publica (ou republica) o template: cria snapshot dos campos atuais
+     * em PdfTemplateVersion e garante status PUBLISHED.
      *
-     * @throws \RuntimeException se não houver campos ou já estiver publicado
+     * Republicar (chamar de novo já estando PUBLISHED) é permitido de
+     * propósito — é assim que o usuário manda modificações novas depois
+     * da primeira publicação. Cada chamada gera uma nova versão/snapshot;
+     * nada é sobrescrito, então versões antigas continuam recuperáveis.
+     *
+     * @throws \RuntimeException se não houver campos ou o template estiver arquivado
      */
     public function publish(): void
     {
-        if ($this->fields['status'] === self::STATUS_PUBLISHED) {
-            throw new \RuntimeException('Template já está publicado.');
+        if ($this->fields['status'] === self::STATUS_ARCHIVED) {
+            throw new \RuntimeException('Template arquivado não pode ser publicado.');
         }
 
         $fields = (new TemplateRepository())->getFields((int) $this->fields['id']);
