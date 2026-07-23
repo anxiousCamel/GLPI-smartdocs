@@ -9,18 +9,31 @@
  * ---------------------------------------------------------------------
  */
 
+ob_start();
+
 include('../../../inc/includes.php');
 
-header('Content-Type: application/json');
+if (ob_get_length()) {
+    ob_clean();
+}
 
-Session::checkLoginUser();
-GlpiPlugin\SmartDocs\Permissions\PermissionManager::checkRight(
-    GlpiPlugin\SmartDocs\Permissions\PermissionManager::SMARTDOCS_TEMPLATE_WRITE
-);
+header('Content-Type: application/json; charset=UTF-8');
 
-$input = json_decode(file_get_contents('php://input'), true);
+if (!Session::getLoginUserID()) {
+    http_response_code(401);
+    echo json_encode(['error' => 'UNAUTHORIZED', 'message' => 'Sessão expirada. Faça login novamente no GLPI.']);
+    exit;
+}
 
-$templateId = $input['template_id'] ?? 0;
+if (!GlpiPlugin\SmartDocs\Permissions\PermissionManager::canWriteTemplates()) {
+    http_response_code(403);
+    echo json_encode(['error' => 'FORBIDDEN', 'message' => 'Sem permissão para publicar templates.']);
+    exit;
+}
+
+$input = json_decode(file_get_contents('php://input'), true) ?? [];
+
+$templateId = (int) ($input['template_id'] ?? 0);
 
 if ($templateId <= 0) {
     http_response_code(400);
@@ -37,12 +50,18 @@ if (!$template->getFromDB($templateId)) {
 
 try {
     $template->publish();
+    if (ob_get_length()) {
+        ob_clean();
+    }
     echo json_encode([
         'success' => true,
         'version' => (int) $template->fields['version'],
         'status'  => $template->fields['status'],
     ]);
-} catch (\RuntimeException $e) {
+} catch (\Throwable $e) {
+    if (ob_get_length()) {
+        ob_clean();
+    }
     http_response_code(400);
-    echo json_encode(['error' => 'INVALID_STATUS', 'message' => $e->getMessage()]);
+    echo json_encode(['error' => 'PUBLISH_FAILED', 'message' => $e->getMessage()]);
 }

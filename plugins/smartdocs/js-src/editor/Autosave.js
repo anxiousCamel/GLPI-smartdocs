@@ -57,16 +57,29 @@ export class Autosave {
         }),
       });
 
-      const json = await res.json();
-      success = !!json.success;
+      const text = await res.text();
+      let json = null;
+      try {
+        json = JSON.parse(text);
+      } catch (e) {
+        console.error('[SmartDocs] Resposta não-JSON no autosave:', text);
+      }
+
+      if (res.status === 401 || res.status === 403) {
+        if (statusEl) statusEl.textContent = 'Sessão expirada. Recarregue a página.';
+        return false;
+      }
+
+      success = !!(json && json.success);
       if (success && statusEl) {
         statusEl.textContent = 'Salvo em ' + new Date().toLocaleTimeString();
       } else if (statusEl) {
-        statusEl.textContent = 'Falha ao salvar (tentando de novo em 5s)';
+        const msg = (json && json.message) ? json.message : 'Falha ao salvar (tentando de novo em 5s)';
+        statusEl.textContent = msg;
       }
     } catch (err) {
       console.error('[SmartDocs] Autosave falhou:', err);
-      if (statusEl) statusEl.textContent = 'Falha ao salvar (tentando de novo em 5s)';
+      if (statusEl) statusEl.textContent = 'Falha de rede ao salvar (tentando de novo em 5s)';
     }
 
     if (success) {

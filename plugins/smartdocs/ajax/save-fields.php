@@ -8,18 +8,31 @@
  * ---------------------------------------------------------------------
  */
 
+ob_start();
+
 include('../../../inc/includes.php');
 
-header('Content-Type: application/json');
+if (ob_get_length()) {
+    ob_clean();
+}
 
-Session::checkLoginUser();
-GlpiPlugin\SmartDocs\Permissions\PermissionManager::checkRight(
-    GlpiPlugin\SmartDocs\Permissions\PermissionManager::SMARTDOCS_TEMPLATE_WRITE
-);
+header('Content-Type: application/json; charset=UTF-8');
 
-$input = json_decode(file_get_contents('php://input'), true);
+if (!Session::getLoginUserID()) {
+    http_response_code(401);
+    echo json_encode(['error' => 'UNAUTHORIZED', 'message' => 'Sessão expirada. Faça login novamente no GLPI.']);
+    exit;
+}
 
-$templateId = $input['template_id'] ?? 0;
+if (!GlpiPlugin\SmartDocs\Permissions\PermissionManager::canWriteTemplates()) {
+    http_response_code(403);
+    echo json_encode(['error' => 'FORBIDDEN', 'message' => 'Sem permissão para editar templates.']);
+    exit;
+}
+
+$input = json_decode(file_get_contents('php://input'), true) ?? [];
+
+$templateId = (int) ($input['template_id'] ?? 0);
 $fields     = $input['fields'] ?? [];
 
 if ($templateId <= 0) {
@@ -45,10 +58,14 @@ $repo = new GlpiPlugin\SmartDocs\Templates\TemplateRepository();
 
 try {
     $repo->saveFields($templateId, $fields);
-} catch (\RuntimeException $e) {
+    if (ob_get_length()) {
+        ob_clean();
+    }
+    echo json_encode(['success' => true, 'saved_at' => date('c')]);
+} catch (\Throwable $e) {
+    if (ob_get_length()) {
+        ob_clean();
+    }
     http_response_code(500);
     echo json_encode(['error' => 'SAVE_FAILED', 'message' => $e->getMessage()]);
-    exit;
 }
-
-echo json_encode(['success' => true, 'saved_at' => date('c')]);

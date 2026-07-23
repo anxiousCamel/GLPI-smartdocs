@@ -92,6 +92,55 @@ final class TemplateRepository
             $fields[] = $row;
         }
 
+        return self::resolveSlots($fields);
+    }
+
+    /**
+     * Deriva `scope` e `slot_index` a partir do `group_label` de cada campo.
+     *
+     * No editor visual o usuário organiza os campos em "grupos" nomeados
+     * (ex.: "Grupo 1", "Grupo 2"), onde cada grupo representa uma posição de
+     * equipamento na MESMA página. O resto do sistema (paginação, wizard de
+     * preenchimento, geração de PDF) trabalha com o modelo do RegCheck:
+     * `scope='item'` + `slot_index` (0..N-1) para campos por equipamento e
+     * `scope='global'` + `slot_index=null` para campos do documento inteiro.
+     *
+     * Esta função é a ponte entre os dois: cada `group_label` distinto vira um
+     * slot (na ordem alfabética, batendo com a numeração G1/G2... do editor),
+     * e campos sem grupo viram globais. Centralizar aqui garante que editor,
+     * wizard e gerador de PDF enxerguem exatamente o mesmo layout.
+     *
+     * @param array<int,array> $fields
+     * @return array<int,array>
+     */
+    public static function resolveSlots(array $fields): array
+    {
+        // Coleta os rótulos de grupo distintos e os ordena de forma estável
+        // (SORT_STRING = mesma ordenação lexicográfica do `.sort()` do editor,
+        // para que o slot 0 aqui seja o mesmo "G1" mostrado no canvas).
+        $groups = [];
+        foreach ($fields as $field) {
+            $label = trim((string) ($field['group_label'] ?? ''));
+            if ($label !== '') {
+                $groups[$label] = true;
+            }
+        }
+        $groupNames = array_keys($groups);
+        sort($groupNames, SORT_STRING);
+        $slotByGroup = array_flip($groupNames); // group_label => índice 0..N-1
+
+        foreach ($fields as &$field) {
+            $label = trim((string) ($field['group_label'] ?? ''));
+            if ($label !== '' && isset($slotByGroup[$label])) {
+                $field['scope']      = 'item';
+                $field['slot_index'] = $slotByGroup[$label];
+            } else {
+                $field['scope']      = 'global';
+                $field['slot_index'] = null;
+            }
+        }
+        unset($field);
+
         return $fields;
     }
 

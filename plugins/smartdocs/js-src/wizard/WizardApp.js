@@ -1,5 +1,9 @@
 /**
- * WizardApp — Controlador principal do wizard de preenchimento.
+ * WizardApp — Controlador principal do wizard de preenchimento de documentos PDF.
+ *
+ * Suporta os dois modos de preenchimento:
+ * 1. Único (fill_mode = 'single'): preenchimento manual/vínculo por equipamento (G1, G2...) + Campos Globais.
+ * 2. Repetição em grade (fill_mode = 'repeat'): popular ativos GLPI por tipo + localização em lote.
  */
 
 import { FieldRenderer } from './FieldRenderer.js';
@@ -10,25 +14,68 @@ export class WizardApp {
   constructor(data, rootElement) {
     this.data = data;
     this.root = rootElement;
-    this.currentItem = 0;
+    this.currentItem = 0; // Pode ser número (0..total_items-1) ou 'global'
     this.values = {};
     this.assetSelector = new AssetSelector(data.ajax_url);
     this.pdfClient = new PdfGeneratorClient(data.ajax_url);
     this.renderer = new FieldRenderer(this);
   }
 
+  getItemsPerPage() {
+    const fields = this.data.fields || [];
+    const slots = new Set();
+    fields.forEach((f) => {
+      if (f.scope === 'item' && f.slot_index !== null && f.slot_index !== undefined) {
+        slots.add(Number(f.slot_index));
+      }
+    });
+    return slots.size || 1;
+  }
+
+  getGroupNameForSlot(slotIndex) {
+    const fields = this.data.fields || [];
+    const itemFields = fields.filter((f) => {
+      if (f.scope !== 'item') return false;
+      const s = f.slot_index !== null && f.slot_index !== undefined ? Number(f.slot_index) : 0;
+      return s === slotIndex;
+    });
+
+    if (itemFields.length > 0 && itemFields[0].group_label) {
+      return itemFields[0].group_label;
+    }
+    return `G${slotIndex + 1}`;
+  }
+
   render() {
-    const isEmptyRepeat = this.data.total_items === 0;
+    const isRepeat = this.data.template?.fill_mode === 'repeat';
+    const isEmptyRepeat = isRepeat && this.data.total_items === 0;
 
     this.root.innerHTML = `
-      <div class="card">
-        <div class="card-header">
-          <h3 class="card-title">${this.escapeHtml(this.data.document_name)}</h3>
-          <div class="card-subtitle text-muted">
-            ${this.data.template.name} — ${isEmptyRepeat ? __('Aguardando preenchimento', 'smartdocs') : this.data.total_items + ' ' + __('item(s)', 'smartdocs')}
+      <style>
+        /* GLPI aplica um .small { width: 1% } (herdado de estilos de tabela)
+           que colapsa qualquer elemento de bloco com a classe .small para
+           ~1 caractere de largura. Aqui neutralizamos isso dentro do wizard. */
+        .smartdocs-wizard .small { width: auto !important; }
+      </style>
+      <div class="card shadow-sm border-0">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+          <div class="flex-fill" style="min-width:0">
+            <h3 class="card-title mb-1">${this.escapeHtml(this.data.document_name)}</h3>
+            <div class="card-subtitle text-muted" style="font-size:0.875rem">
+              <strong>${this.escapeHtml(this.data.template.name)}</strong> —
+              <span class="badge ${isRepeat ? 'bg-purple-lt' : 'bg-blue-lt'} me-2">
+                ${isRepeat ? __('Repetição em Grade', 'smartdocs') : __('Preenchimento Único', 'smartdocs')}
+              </span>
+              ${isEmptyRepeat ? __('Aguardando seleção do tipo de ativo', 'smartdocs') : this.data.total_items + ' ' + __('equipamento(s)', 'smartdocs')}
+            </div>
           </div>
+          ${isRepeat && !isEmptyRepeat ? `
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-repopulate">
+              <i class="ti ti-playlist-add me-1"></i>${__('Repopular Ativos', 'smartdocs')}
+            </button>
+          ` : ''}
         </div>
-        <div class="card-body">
+        <div class="card-body p-4">
           ${isEmptyRepeat ? this.renderPopulateBlock() : this.renderWizardBody()}
           <div id="wizard-status" class="mt-3"></div>
         </div>
@@ -45,8 +92,8 @@ export class WizardApp {
     return `
       ${this.renderProgressBar()}
       ${this.renderItemTabs()}
-      <div id="wizard-fields-container"></div>
-      <div id="wizard-actions" class="mt-4 d-flex justify-content-between">
+      <div id="wizard-fields-container" class="bg-white p-3 border rounded"></div>
+      <div id="wizard-actions" class="mt-4 d-flex justify-content-between align-items-center">
         ${this.renderActions()}
       </div>
     `;
@@ -54,11 +101,11 @@ export class WizardApp {
 
   renderPopulateBlock() {
     const itemtypes = [
+      { value: 'Peripheral', label: __('Periférico / Balança / Dispositivo', 'smartdocs') },
       { value: 'Computer', label: __('Computador', 'smartdocs') },
+      { value: 'Printer', label: __('Impressora', 'smartdocs') },
       { value: 'Monitor', label: __('Monitor', 'smartdocs') },
       { value: 'NetworkEquipment', label: __('Equipamento de Rede', 'smartdocs') },
-      { value: 'Peripheral', label: __('Periférico', 'smartdocs') },
-      { value: 'Printer', label: __('Impressora', 'smartdocs') },
       { value: 'Phone', label: __('Telefone', 'smartdocs') },
     ];
 
@@ -66,72 +113,127 @@ export class WizardApp {
       `<option value="${this.escapeHtml(t.value)}">${this.escapeHtml(t.label)}</option>`
     ).join('');
 
+    const locations = this.data.locations || [];
+    const locationOptions = locations.map(l =>
+      `<option value="${l.id}">${this.escapeHtml(l.name)}</option>`
+    ).join('');
+
     return `
-      <div class="alert alert-info mb-3">
-        <i class="ti ti-info-circle"></i>
-        ${__('Este documento está configurado para repetição em grade. Selecione o tipo de ativo e a localização para preencher automaticamente.', 'smartdocs')}
+      <div class="alert alert-info border-0 shadow-sm mb-4">
+        <div class="d-flex">
+          <i class="ti ti-info-circle fs-2 me-3 flex-shrink-0"></i>
+          <div>
+            <h5 class="alert-title mb-1">${__('Modo Repetição em Grade', 'smartdocs')}</h5>
+            <p class="mb-0 small">${__('Selecione o tipo de equipamento do GLPI e a localização desejada. O sistema irá buscar automaticamente todos os ativos correspondentes e preencher os grupos de posições no documento.', 'smartdocs')}</p>
+          </div>
+        </div>
       </div>
-      <div class="row g-3">
-        <div class="col-md-4">
-          <label class="form-label">${__('Tipo de ativo', 'smartdocs')}</label>
-          <select class="form-select" id="populate-itemtype">
-            <option value="">— ${__('Selecione', 'smartdocs')} —</option>
-            ${typeOptions}
-          </select>
-        </div>
-        <div class="col-md-4">
-          <label class="form-label">${__('Localização (opcional)', 'smartdocs')}</label>
-          <input type="number" class="form-control" id="populate-location" placeholder="ID da localização" min="0">
-          <small class="text-muted">${__('Deixe em branco para todos os locais.', 'smartdocs')}</small>
-        </div>
-        <div class="col-md-4 d-flex align-items-end">
-          <button type="button" class="btn btn-primary w-100" id="btn-populate">
-            <i class="ti ti-playlist-add"></i> ${__('Popular equipamentos', 'smartdocs')}
-          </button>
+      <div class="card bg-light border-0">
+        <div class="card-body p-4">
+          <div class="row g-3">
+            <div class="col-md-5">
+              <label class="form-label font-weight-bold">${__('Tipo de Ativo no GLPI', 'smartdocs')}</label>
+              <select class="form-select" id="populate-itemtype">
+                ${typeOptions}
+              </select>
+            </div>
+            <div class="col-md-5">
+              <label class="form-label font-weight-bold">${__('Localização / Setor (GLPI)', 'smartdocs')}</label>
+              <select class="form-select" id="populate-location">
+                <option value="">— ${__('Todas as localizações', 'smartdocs')} —</option>
+                ${locationOptions}
+              </select>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+              <button type="button" class="btn btn-primary w-100" id="btn-populate">
+                <i class="ti ti-playlist-add me-1"></i> ${__('Popular', 'smartdocs')}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     `;
   }
 
   renderProgressBar() {
-    const percent = Math.round(((this.currentItem + 1) / this.data.total_items) * 100);
+    if (this.data.total_items <= 1) return '';
+    const numericIndex = typeof this.currentItem === 'number' ? this.currentItem : 0;
+    const percent = Math.round(((numericIndex + 1) / this.data.total_items) * 100);
     return `
-      <div class="progress mb-3">
-        <div class="progress-bar" style="width: ${percent}%" role="progressbar"
+      <div class="progress mb-3" style="height: 6px;">
+        <div class="progress-bar bg-primary" style="width: ${percent}%" role="progressbar"
              aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100">
-          ${percent}%
         </div>
       </div>
     `;
   }
 
   renderItemTabs() {
-    if (this.data.total_items <= 1) return '';
+    const isSingle = this.data.template?.fill_mode === 'single';
+    const totalItems = this.data.total_items;
+    const itemsPerPage = this.getItemsPerPage();
 
-    const tabs = Array.from({ length: this.data.total_items }, (_, i) => `
-      <li class="nav-item">
-        <a class="nav-link ${i === 0 ? 'active' : ''}" href="#"
-           data-item="${i}" role="tab">
-          ${__('Item', 'smartdocs')} ${i + 1}
-        </a>
-      </li>
-    `).join('');
+    let tabsHtml = '';
 
-    return `<ul class="nav nav-tabs mb-3">${tabs}</ul>`;
+    for (let i = 0; i < totalItems; i++) {
+      const slotIndex = i % itemsPerPage;
+      const groupName = this.getGroupNameForSlot(slotIndex);
+      const isActive = this.currentItem === i;
+      tabsHtml += `
+        <li class="nav-item">
+          <a class="nav-link ${isActive ? 'active' : ''}" href="#" data-item="${i}" role="tab">
+            <i class="ti ti-box me-1"></i>${__('Equipamento', 'smartdocs')} ${i + 1}
+            <span class="badge bg-blue-lt ms-1">${this.escapeHtml(groupName)}</span>
+          </a>
+        </li>
+      `;
+    }
+
+    // Aba de Campos Globais
+    const hasGlobal = (this.data.fields || []).some(f => f.scope === 'global');
+    if (hasGlobal) {
+      const isActive = this.currentItem === 'global';
+      tabsHtml += `
+        <li class="nav-item">
+          <a class="nav-link ${isActive ? 'active' : ''}" href="#" data-item="global" role="tab">
+            <i class="ti ti-world me-1"></i>${__('Campos Globais', 'smartdocs')}
+          </a>
+        </li>
+      `;
+    }
+
+    let addBtn = '';
+    if (isSingle) {
+      addBtn = `
+        <button type="button" class="btn btn-sm btn-outline-primary ms-auto" id="btn-add-item">
+          <i class="ti ti-plus me-1"></i>${__('Adicionar Equipamento', 'smartdocs')}
+        </button>
+      `;
+    }
+
+    return `
+      <div class="d-flex align-items-center mb-3">
+        <ul class="nav nav-tabs flex-fill mb-0">${tabsHtml}</ul>
+        ${addBtn}
+      </div>
+    `;
   }
 
   renderActions() {
-    const prevDisabled = this.currentItem === 0 ? 'disabled' : '';
-    const nextLabel = this.currentItem < this.data.total_items - 1
-      ? __('Próximo', 'smartdocs')
+    const isGlobal = this.currentItem === 'global';
+    const isNumeric = typeof this.currentItem === 'number';
+    const prevDisabled = (isNumeric && this.currentItem === 0) ? 'disabled' : '';
+
+    const nextLabel = (isNumeric && this.currentItem < this.data.total_items - 1)
+      ? __('Próximo Equipamento', 'smartdocs')
       : __('Gerar PDF', 'smartdocs');
 
     return `
       <button type="button" class="btn btn-secondary" id="wizard-prev" ${prevDisabled}>
-        ${__('Anterior', 'smartdocs')}
+        <i class="ti ti-arrow-left me-1"></i>${__('Anterior', 'smartdocs')}
       </button>
-      <button type="button" class="btn btn-primary" id="wizard-next">
-        ${nextLabel}
+      <button type="button" class="btn btn-primary ms-auto" id="wizard-next">
+        ${nextLabel} <i class="ti ti-arrow-right ms-1"></i>
       </button>
     `;
   }
@@ -141,7 +243,8 @@ export class WizardApp {
       const tab = e.target.closest('[data-item]');
       if (tab) {
         e.preventDefault();
-        this.showItem(parseInt(tab.dataset.item, 10));
+        const raw = tab.dataset.item;
+        this.showItem(raw === 'global' ? 'global' : parseInt(raw, 10));
         return;
       }
 
@@ -159,6 +262,51 @@ export class WizardApp {
         this.onPopulate();
         return;
       }
+
+      if (e.target.closest('#btn-repopulate')) {
+        this.data.total_items = 0;
+        this.render();
+        return;
+      }
+
+      if (e.target.closest('#btn-add-item')) {
+        this.addEquipmentItem();
+        return;
+      }
+
+      const searchBtn = e.target.closest('[data-action="search-asset"]');
+      if (searchBtn) {
+        const itemIndex = parseInt(searchBtn.dataset.item, 10);
+        this.performAssetSearch(itemIndex);
+        return;
+      }
+
+      const selectBtn = e.target.closest('[data-action="select-asset"]');
+      if (selectBtn) {
+        const itemIndex = parseInt(selectBtn.dataset.item, 10);
+        const itemtype = selectBtn.dataset.itemtype;
+        const itemsId = parseInt(selectBtn.dataset.itemsid, 10);
+        this.linkAssetToItem(itemIndex, itemtype, itemsId);
+        return;
+      }
+
+      const toggleSearchBtn = e.target.closest('[data-action="toggle-search"]');
+      if (toggleSearchBtn) {
+        const itemIndex = parseInt(toggleSearchBtn.dataset.item, 10);
+        const wrapper = document.getElementById(`asset-search-wrapper-${itemIndex}`);
+        if (wrapper) {
+          wrapper.style.display = wrapper.style.display === 'none' ? 'block' : 'none';
+        }
+        return;
+      }
+    });
+
+    this.root.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && e.target.matches('[id^="asset-search-"]')) {
+        e.preventDefault();
+        const itemIndex = parseInt(e.target.id.replace('asset-search-', ''), 10);
+        this.performAssetSearch(itemIndex);
+      }
     });
 
     this.root.addEventListener('change', (e) => {
@@ -174,15 +322,16 @@ export class WizardApp {
 
     // Atualiza tabs
     this.root.querySelectorAll('[data-item]').forEach((tab) => {
-      tab.classList.toggle('active', parseInt(tab.dataset.item, 10) === index);
+      const raw = tab.dataset.item;
+      const match = (index === 'global' && raw === 'global') || (typeof index === 'number' && parseInt(raw, 10) === index);
+      tab.classList.toggle('active', match);
     });
 
-    // Atualiza progresso
+    // Atualiza barra de progresso
     const progressBar = this.root.querySelector('.progress-bar');
-    if (progressBar) {
+    if (progressBar && typeof index === 'number') {
       const percent = Math.round(((index + 1) / this.data.total_items) * 100);
       progressBar.style.width = `${percent}%`;
-      progressBar.textContent = `${percent}%`;
       progressBar.setAttribute('aria-valuenow', String(percent));
     }
 
@@ -192,7 +341,7 @@ export class WizardApp {
       actions.innerHTML = this.renderActions();
     }
 
-    // Renderiza campos
+    // Renderiza campos da aba
     const container = this.root.querySelector('#wizard-fields-container');
     if (container) {
       container.innerHTML = this.renderer.renderFieldsForItem(index);
@@ -200,16 +349,131 @@ export class WizardApp {
   }
 
   prevItem() {
-    if (this.currentItem > 0) {
+    if (typeof this.currentItem === 'number' && this.currentItem > 0) {
       this.showItem(this.currentItem - 1);
+    } else if (this.currentItem === 'global' && this.data.total_items > 0) {
+      this.showItem(this.data.total_items - 1);
     }
   }
 
   nextOrGenerate() {
-    if (this.currentItem < this.data.total_items - 1) {
+    if (typeof this.currentItem === 'number' && this.currentItem < this.data.total_items - 1) {
       this.showItem(this.currentItem + 1);
+    } else if (typeof this.currentItem === 'number' && (this.data.fields || []).some(f => f.scope === 'global')) {
+      this.showItem('global');
     } else {
       this.generatePdf();
+    }
+  }
+
+  async performAssetSearch(itemIndex) {
+    const typeEl = document.getElementById(`asset-type-${itemIndex}`);
+    const inputEl = document.getElementById(`asset-search-${itemIndex}`);
+    const resultsEl = document.getElementById(`asset-results-${itemIndex}`);
+
+    if (!inputEl || !resultsEl) return;
+
+    const query = inputEl.value.trim();
+    const type = typeEl ? typeEl.value : 'Computer';
+
+    if (query.length < 2) {
+      resultsEl.style.display = 'block';
+      resultsEl.innerHTML = `<div class="alert alert-warning py-1 px-2 small mb-0">${__('Digite pelo menos 2 caracteres para buscar.', 'smartdocs')}</div>`;
+      return;
+    }
+
+    resultsEl.style.display = 'block';
+    resultsEl.innerHTML = `<div class="text-muted small py-2"><i class="ti ti-loader-2 ti-spin me-1"></i>${__('Buscando no GLPI...', 'smartdocs')}</div>`;
+
+    const results = await this.assetSelector.search(query, [type]);
+
+    if (results.length === 0) {
+      resultsEl.innerHTML = `<div class="alert alert-info py-1 px-2 small mb-0">${__('Nenhum ativo encontrado no GLPI.', 'smartdocs')}</div>`;
+      return;
+    }
+
+    let html = `<div class="list-group list-group-flush border rounded shadow-sm overflow-auto" style="max-height: 180px;">`;
+    results.forEach((r) => {
+      const serialInfo = r.serial ? ` — Serial: ${this.escapeHtml(r.serial)}` : '';
+      html += `
+        <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-center py-2 px-3">
+          <div>
+            <strong>${this.escapeHtml(r.name)}</strong>
+            <small class="text-muted d-block">${this.escapeHtml(r.itemtype)}${serialInfo}</small>
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-primary"
+                  data-action="select-asset" data-item="${itemIndex}"
+                  data-itemtype="${this.escapeHtml(r.itemtype)}" data-itemsid="${r.id}">
+            <i class="ti ti-link me-1"></i>${__('Vincular', 'smartdocs')}
+          </button>
+        </div>
+      `;
+    });
+    html += `</div>`;
+    resultsEl.innerHTML = html;
+  }
+
+  async linkAssetToItem(itemIndex, itemtype, itemsId) {
+    const resultsEl = document.getElementById(`asset-results-${itemIndex}`);
+    if (resultsEl) {
+      resultsEl.innerHTML = `<div class="text-muted small py-2"><i class="ti ti-loader-2 ti-spin me-1"></i>${__('Vinculando ativo e buscando dados no GLPI...', 'smartdocs')}</div>`;
+    }
+
+    try {
+      const response = await fetch(`${this.data.ajax_url}select-asset.php`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          document_id: this.data.document_id,
+          item_index: itemIndex,
+          itemtype: itemtype,
+          items_id: itemsId,
+        }),
+      });
+
+      const json = await response.json();
+      if (response.ok && json.success) {
+        if (json.filled && Array.isArray(json.filled)) {
+          json.filled.forEach((item) => {
+            const key = `${item.field_id}:${itemIndex}`;
+            this.values[key] = item.value;
+          });
+        }
+        if (!this.data.metadata) this.data.metadata = {};
+        if (!this.data.metadata.assignments) this.data.metadata.assignments = [];
+        this.data.metadata.assignments[itemIndex] = {
+          itemtype: itemtype,
+          items_id: itemsId,
+          name: json.filled?.find(f => f.binding_key === 'eq.name')?.value || itemtype,
+        };
+
+        this.showItem(itemIndex);
+      } else {
+        alert(json.message || __('Erro ao vincular ativo.', 'smartdocs'));
+      }
+    } catch (err) {
+      alert(__('Erro de comunicação: ', 'smartdocs') + err.message);
+    }
+  }
+
+  async addEquipmentItem() {
+    try {
+      const response = await fetch(`${this.data.ajax_url}add-item.php`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ document_id: this.data.document_id }),
+      });
+
+      const json = await response.json();
+      if (response.ok && json.success) {
+        this.data.total_items = json.total_items;
+        this.render();
+        this.showItem(this.data.total_items - 1);
+      } else {
+        alert(json.message || __('Erro ao adicionar equipamento.', 'smartdocs'));
+      }
+    } catch (err) {
+      alert(__('Erro de comunicação: ', 'smartdocs') + err.message);
     }
   }
 
@@ -228,7 +492,7 @@ export class WizardApp {
 
     const btn = document.getElementById('btn-populate');
     btn.disabled = true;
-    btn.innerHTML = `<i class="ti ti-loader-2 ti-spin"></i> ${__('Populando...', 'smartdocs')}`;
+    btn.innerHTML = `<i class="ti ti-loader-2 ti-spin me-1"></i> ${__('Populando...', 'smartdocs')}`;
 
     try {
       const response = await fetch(`${this.data.ajax_url}populate-document.php`, {
@@ -246,18 +510,17 @@ export class WizardApp {
       if (!response.ok || !result.success) {
         statusEl.innerHTML = `<div class="alert alert-danger">${this.escapeHtml(result.message || __('Erro ao popular.', 'smartdocs'))}</div>`;
         btn.disabled = false;
-        btn.innerHTML = `<i class="ti ti-playlist-add"></i> ${__('Popular equipamentos', 'smartdocs')}`;
+        btn.innerHTML = `<i class="ti ti-playlist-add me-1"></i> ${__('Popular', 'smartdocs')}`;
         return;
       }
 
       statusEl.innerHTML = `<div class="alert alert-success">${__('Populado com sucesso:', 'smartdocs')} ${result.total_items} ${__('itens em', 'smartdocs')} ${result.total_pages} ${__('página(s).', 'smartdocs')}</div>`;
 
-      // Recarrega a página para exibir a grade com os itens preenchidos
       window.location.reload();
     } catch (e) {
       statusEl.innerHTML = `<div class="alert alert-danger">${this.escapeHtml(e.message)}</div>`;
       btn.disabled = false;
-      btn.innerHTML = `<i class="ti ti-playlist-add"></i> ${__('Popular equipamentos', 'smartdocs')}`;
+      btn.innerHTML = `<i class="ti ti-playlist-add me-1"></i> ${__('Popular', 'smartdocs')}`;
     }
   }
 
@@ -269,7 +532,6 @@ export class WizardApp {
     const key = `${fieldId}:${itemIndex}`;
     this.values[key] = value;
 
-    // Autosave
     this.saveField(fieldId, itemIndex, value);
   }
 
@@ -314,11 +576,11 @@ export class WizardApp {
 
       if (status === 'DONE') {
         statusEl.innerHTML = `
-          <div class="alert alert-success">
-            ${__('PDF gerado com sucesso!', 'smartdocs')}
+          <div class="alert alert-success d-flex align-items-center justify-content-between">
+            <div><i class="ti ti-check me-2"></i>${__('PDF gerado com sucesso!', 'smartdocs')}</div>
             <a href="${this.data.ajax_url}../front/document.send.php?id=${data.generated_pdf_id}"
-               class="btn btn-sm btn-primary ms-2" target="_blank">
-              ${__('Download', 'smartdocs')}
+               class="btn btn-sm btn-primary" target="_blank">
+              <i class="ti ti-download me-1"></i>${__('Download PDF', 'smartdocs')}
             </a>
           </div>
         `;
@@ -332,7 +594,7 @@ export class WizardApp {
 
   escapeHtml(text) {
     const div = document.createElement('div');
-    div.textContent = text;
+    div.textContent = String(text ?? '');
     return div.innerHTML;
   }
 }

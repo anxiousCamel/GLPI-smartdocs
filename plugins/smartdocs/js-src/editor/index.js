@@ -53,9 +53,19 @@ class TemplateEditor {
                 <i class="ti ti-focus-2"></i>
               </button>
             </div>
-            <button type="button" class="btn btn-secondary btn-sm me-2" id="btn-toggle-grid" title="Ativar/desativar grade de alinhamento">
-              <i class="ti ti-grid-dots"></i>
-            </button>
+            <div class="grid-controls me-2 d-inline-flex align-items-center gap-1">
+              <button type="button" class="btn btn-secondary btn-sm" id="btn-toggle-grid" title="Ativar/desativar grade de alinhamento">
+                <i class="ti ti-grid-dots"></i>
+              </button>
+              <select id="grid-size-select" class="form-select form-select-sm d-inline-block" style="width: auto;" title="Tamanho do passo da grade">
+                <option value="1">1 px</option>
+                <option value="2">2 px</option>
+                <option value="5">5 px</option>
+                <option value="10">10 px</option>
+                <option value="20" selected>20 px</option>
+                <option value="50">50 px</option>
+              </select>
+            </div>
             <button type="button" class="btn btn-secondary btn-sm" id="btn-undo" title="Desfazer (Ctrl+Z)">
               <i class="ti ti-arrow-back-up"></i>
             </button>
@@ -355,7 +365,12 @@ class TemplateEditor {
     this.propertiesPanel = new PropertiesPanel(
       document.getElementById('properties-panel'),
       (data) => this.canvasEditor.updateSelectedFields(data),
-      this.data.binding_keys || []
+      this.data.binding_keys || [],
+      (action, arg) => {
+        if (action === 'align') this.canvasEditor.alignSelected(arg);
+        if (action === 'distribute') this.canvasEditor.distributeSelected(arg);
+        if (action === 'matchSize') this.canvasEditor.matchSelectedSize(arg);
+      }
     );
 
     this.pdfRenderer = new PdfRenderer(
@@ -475,6 +490,13 @@ class TemplateEditor {
       const enabled = this.canvasEditor.toggleGrid();
       e.currentTarget.classList.toggle('active-toggle', enabled);
     });
+
+    const gridSizeSelect = document.getElementById('grid-size-select');
+    if (gridSizeSelect) {
+      gridSizeSelect.addEventListener('change', (e) => {
+        this.canvasEditor.setGridSize(e.target.value);
+      });
+    }
 
     document.getElementById('toggle-field-sidebar').addEventListener('click', () => {
       const el = document.getElementById('field-sidebar');
@@ -623,13 +645,29 @@ class TemplateEditor {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ template_id: this.data.template_id }),
       });
-      const json = await res.json();
-      if (json.success) {
+
+      const text = await res.text();
+      let json = null;
+      try {
+        json = JSON.parse(text);
+      } catch (parseErr) {
+        console.error('[SmartDocs] Resposta inesperada ao publicar:', text);
+        if (res.status === 401) {
+          alert('Sessão expirada. Faça login novamente no GLPI e tente publicar.');
+        } else {
+          alert('Erro no servidor ao publicar. Verifique se o template possui campos configurados ou recarregue a página.');
+        }
+        btn.disabled = false;
+        btn.innerHTML = idleLabel;
+        return;
+      }
+
+      if (res.ok && json && json.success) {
         btn.innerHTML = '<i class="ti ti-check"></i> Publicado';
         btn.classList.replace('btn-primary', 'btn-success');
         setTimeout(() => location.reload(), 800);
       } else {
-        alert(json.message || 'Erro ao publicar.');
+        alert((json && json.message) ? json.message : 'Erro ao publicar o template.');
         btn.disabled = false;
         btn.innerHTML = idleLabel;
       }

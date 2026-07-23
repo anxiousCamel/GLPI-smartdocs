@@ -51,8 +51,20 @@ foreach ($filledFields as $ff) {
     $filledMap[$key] = $ff['value'] ?? '';
 }
 
-// Enriquece campos com valores preenchidos
+// Enriquece campos com valores preenchidos e normaliza JSON de config/position
+// para objetos nativos (o JS espera field.config.label como objeto, não string).
 foreach ($fields as &$field) {
+    if (isset($field['config']) && is_string($field['config'])) {
+        $decoded = json_decode($field['config'], true);
+        $field['config'] = is_array($decoded) ? $decoded : null;
+    }
+    if (isset($field['position']) && is_string($field['position'])) {
+        $decodedPos = json_decode($field['position'], true);
+        if (is_array($decodedPos)) {
+            $field['position'] = $decodedPos;
+        }
+    }
+
     for ($i = 0; $i < (int) $doc->fields['total_items']; $i++) {
         $key = (int) $field['id'] . ':' . $i;
         if (isset($filledMap[$key])) {
@@ -73,6 +85,24 @@ Html::header(
     'documents'
 );
 
+/** @var \DBmysql $DB */
+global $DB;
+
+$locations = [];
+// glpi_locations não possui coluna is_deleted no schema padrão do GLPI —
+// filtrar por ela causava "SQL Error 1054: Unknown column 'is_deleted'".
+$locIterator = $DB->request([
+    'SELECT' => ['id', 'completename', 'name'],
+    'FROM'   => 'glpi_locations',
+    'ORDER'  => 'completename ASC',
+]);
+foreach ($locIterator as $l) {
+    $locations[] = [
+        'id'   => (int) $l['id'],
+        'name' => $l['completename'] ?: $l['name'],
+    ];
+}
+
 // ------------------------------------------------------------------
 // Injeção de dados para o JS
 // ------------------------------------------------------------------
@@ -81,18 +111,23 @@ $wizardData = [
     'document_name'  => $doc->fields['name'],
     'status'         => $doc->fields['status'],
     'total_items'    => (int) $doc->fields['total_items'],
+    'metadata'       => $doc->getMetadata(),
     'template'       => [
         'id'         => (int) $template->fields['id'],
         'name'       => $template->fields['name'],
         'fill_mode'  => $template->fields['fill_mode'],
     ],
     'fields'         => $fields,
+    'locations'      => $locations,
     'ajax_url'       => $CFG_GLPI['root_doc'] . '/plugins/smartdocs/ajax/',
-    'asset_types'    => ['Computer', 'Printer', 'Monitor', 'NetworkEquipment', 'Peripheral', 'Phone'],
+    'asset_types'    => ['Computer', 'Peripheral', 'Printer', 'Monitor', 'NetworkEquipment', 'Phone'],
 ];
 
 $pluginPath = Plugin::getWebDir('smartdocs');
-echo '<script type="module" src="' . htmlescape($pluginPath . '/js/wizard.bundle.js') . '"></script>';
+// Cache-busting pelo mtime do bundle para o navegador não servir versão antiga.
+$bundleFsPath = __DIR__ . '/../js/wizard.bundle.js';
+$bundleVer = file_exists($bundleFsPath) ? filemtime($bundleFsPath) : time();
+echo '<script type="module" src="' . htmlescape($pluginPath . '/js/wizard.bundle.js?v=' . $bundleVer) . '"></script>';
 
 echo "<div id='smartdocs-wizard-root' class='smartdocs-wizard'></div>";
 

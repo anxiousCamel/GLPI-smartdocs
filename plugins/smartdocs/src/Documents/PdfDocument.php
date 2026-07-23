@@ -214,8 +214,12 @@ final class PdfDocument extends CommonDBTM
         // fill_mode=repeat: total_items determinado pelo populate, não pelo usuário
         if ($templateData['fill_mode'] === 'repeat') {
             $input['total_items'] = 0;
-        } elseif (!isset($input['total_items']) || (int) $input['total_items'] < 1) {
-            $input['total_items'] = 1;
+        } else {
+            $fields = (new \GlpiPlugin\SmartDocs\Templates\TemplateRepository())->getFields($templateId);
+            $itemsPerPage = \GlpiPlugin\SmartDocs\Templates\TemplatePaginator::itemsPerPage($fields);
+            if (!isset($input['total_items']) || (int) $input['total_items'] < 1) {
+                $input['total_items'] = max(1, $itemsPerPage);
+            }
         }
 
         // Entidade ativa do usuário

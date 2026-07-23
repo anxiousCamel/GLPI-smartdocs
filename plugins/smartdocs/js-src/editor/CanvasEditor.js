@@ -173,13 +173,19 @@ export class CanvasEditor {
     return this.gridEnabled;
   }
 
+  setGridSize(size) {
+    this.gridSize = Math.max(1, parseFloat(size) || 1);
+    this.renderGrid();
+  }
+
   renderGrid() {
     this.gridLayer.destroyChildren();
 
     if (this.gridEnabled) {
       const size = this.gridSize;
-      for (let x = 0; x <= this.pageWidth; x += size) {
-        const major = x % (size * 5) === 0;
+      const drawStep = size < 4 ? 5 : size;
+      for (let x = 0; x <= this.pageWidth; x += drawStep) {
+        const major = Math.round(x % (drawStep * 5)) === 0;
         this.gridLayer.add(new Konva.Line({
           points: [x, 0, x, this.pageHeight],
           stroke: '#206bc4',
@@ -187,8 +193,8 @@ export class CanvasEditor {
           opacity: major ? 0.45 : 0.22,
         }));
       }
-      for (let y = 0; y <= this.pageHeight; y += size) {
-        const major = y % (size * 5) === 0;
+      for (let y = 0; y <= this.pageHeight; y += drawStep) {
+        const major = Math.round(y % (drawStep * 5)) === 0;
         this.gridLayer.add(new Konva.Line({
           points: [0, y, this.pageWidth, y],
           stroke: '#206bc4',
@@ -301,17 +307,44 @@ export class CanvasEditor {
     const fontConfig = field.type === 'text' ? (this.parseConfig(field.config)) : {};
     const alignMap = { L: 'left', C: 'center', R: 'right' };
 
-    const label = new Konva.Text({
-      text: field.label || field.binding_key || field.type,
-      fontSize: fontConfig.font_size ? Math.min(16, Math.max(8, fontConfig.font_size)) : 11,
-      fontFamily: fontConfig.font_family || 'Arial',
-      fontStyle: fontConfig.bold ? 'bold' : 'normal',
-      align: alignMap[fontConfig.align] || 'left',
-      fill: color.stroke,
-      padding: 4,
-      width: group.width(),
-      ellipsis: true,
-    });
+    let label;
+    let checkIcon = null;
+
+    if (field.type === 'checkbox') {
+      checkIcon = new Konva.Text({
+        text: '✓',
+        fontSize: Math.max(8, Math.min(group.width(), group.height()) * 0.75),
+        fontStyle: 'bold',
+        fill: color.stroke,
+        width: group.width(),
+        height: group.height(),
+        align: 'center',
+        verticalAlign: 'middle',
+      });
+
+      label = new Konva.Text({
+        x: group.width() + 4,
+        y: Math.max(0, (group.height() - 12) / 2),
+        text: field.label || field.binding_key || 'Checkbox',
+        fontSize: 11,
+        fontFamily: 'Arial',
+        fill: color.stroke,
+        wrap: 'none',
+      });
+    } else {
+      label = new Konva.Text({
+        text: field.label || field.binding_key || field.type,
+        fontSize: fontConfig.font_size ? Math.min(16, Math.max(8, fontConfig.font_size)) : 11,
+        fontFamily: fontConfig.font_family || 'Arial',
+        fontStyle: fontConfig.bold ? 'bold' : 'normal',
+        align: alignMap[fontConfig.align] || 'left',
+        fill: color.stroke,
+        padding: 4,
+        width: group.width(),
+        wrap: 'none',
+        ellipsis: true,
+      });
+    }
 
     const resizeHandle = new Konva.Circle({
       x: group.width(),
@@ -331,12 +364,16 @@ export class CanvasEditor {
     resizeHandle.dragBoundFunc((pos) => {
       let localX = pos.x - group.x();
       let localY = pos.y - group.y();
-      localX = Math.max(20, this.snapToGrid(localX));
-      localY = Math.max(20, this.snapToGrid(localY));
+      localX = Math.max(6, this.snapToGrid(localX));
+      localY = Math.max(6, this.snapToGrid(localY));
       return { x: group.x() + localX, y: group.y() + localY };
     });
 
-    group.add(rect, label, resizeHandle);
+    if (checkIcon) {
+      group.add(rect, checkIcon, label, resizeHandle);
+    } else {
+      group.add(rect, label, resizeHandle);
+    }
 
     if (field.group_label) {
       const groupIndex = this.groupIndexMap.get(field.group_label);
@@ -431,7 +468,16 @@ export class CanvasEditor {
       const newH = resizeHandle.y();
       rect.width(newW);
       rect.height(newH);
-      label.width(newW);
+      if (field.type === 'checkbox') {
+        label.x(newW + 4);
+        if (checkIcon) {
+          checkIcon.width(newW);
+          checkIcon.height(newH);
+          checkIcon.fontSize(Math.max(8, Math.min(newW, newH) * 0.75));
+        }
+      } else {
+        label.width(newW);
+      }
       this.layer.batchDraw();
     });
 
@@ -461,11 +507,15 @@ export class CanvasEditor {
   // ------------------------------------------------------------------
 
   addField(type) {
+    const defaultPos = type === 'checkbox'
+      ? { x: 0.1, y: 0.1, width: 0.018, height: 0.014 }
+      : { x: 0.1, y: 0.1, width: 0.2, height: 0.04 };
+
     const newField = {
       id: this.nextId++,
       type: type,
       page_index: 0,
-      position: { x: 0.1, y: 0.1, width: 0.2, height: 0.04 },
+      position: defaultPos,
       scope: 'global',
       binding_key: null,
       group_label: null,
@@ -605,5 +655,113 @@ export class CanvasEditor {
       checkbox: 'Checkbox',
     };
     return map[type] || type;
+  }
+
+  // ------------------------------------------------------------------
+  // Alinhamento e distribuição
+  // ------------------------------------------------------------------
+
+  alignSelected(direction) {
+    const selected = this.getSelectedFields();
+    if (selected.length < 2) return;
+
+    const parsed = selected.map(f => ({
+      field: f,
+      pos: this.parsePosition(f.position),
+    }));
+
+    const minX = Math.min(...parsed.map(item => item.pos.x));
+    const maxX = Math.max(...parsed.map(item => item.pos.x + item.pos.width));
+    const minY = Math.min(...parsed.map(item => item.pos.y));
+    const maxY = Math.max(...parsed.map(item => item.pos.y + item.pos.height));
+
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+
+    parsed.forEach(({ field, pos }) => {
+      const newPos = { ...pos };
+      switch (direction) {
+        case 'left':
+          newPos.x = minX;
+          break;
+        case 'center-h':
+          newPos.x = centerX - pos.width / 2;
+          break;
+        case 'right':
+          newPos.x = maxX - pos.width;
+          break;
+        case 'top':
+          newPos.y = minY;
+          break;
+        case 'center-v':
+          newPos.y = centerY - pos.height / 2;
+          break;
+        case 'bottom':
+          newPos.y = maxY - pos.height;
+          break;
+      }
+      field.position = newPos;
+    });
+
+    this.renderFields();
+    this.onChange(this.fields);
+  }
+
+  distributeSelected(axis) {
+    const selected = this.getSelectedFields();
+    if (selected.length < 3) return;
+
+    const parsed = selected.map(f => ({
+      field: f,
+      pos: this.parsePosition(f.position),
+    }));
+
+    if (axis === 'horizontal') {
+      parsed.sort((a, b) => a.pos.x - b.pos.x);
+      const minX = parsed[0].pos.x;
+      const last = parsed[parsed.length - 1];
+      const maxX = last.pos.x;
+      const totalSpan = maxX - minX;
+      const step = totalSpan / (parsed.length - 1);
+
+      parsed.forEach((item, index) => {
+        item.field.position = { ...item.pos, x: minX + index * step };
+      });
+    } else if (axis === 'vertical') {
+      parsed.sort((a, b) => a.pos.y - b.pos.y);
+      const minY = parsed[0].pos.y;
+      const last = parsed[parsed.length - 1];
+      const maxY = last.pos.y;
+      const totalSpan = maxY - minY;
+      const step = totalSpan / (parsed.length - 1);
+
+      parsed.forEach((item, index) => {
+        item.field.position = { ...item.pos, y: minY + index * step };
+      });
+    }
+
+    this.renderFields();
+    this.onChange(this.fields);
+  }
+
+  matchSelectedSize(dimension) {
+    const selected = this.getSelectedFields();
+    if (selected.length < 2) return;
+
+    const firstPos = this.parsePosition(selected[0].position);
+
+    selected.forEach((f) => {
+      const pos = this.parsePosition(f.position);
+      if (dimension === 'width' || dimension === 'both') {
+        pos.width = firstPos.width;
+      }
+      if (dimension === 'height' || dimension === 'both') {
+        pos.height = firstPos.height;
+      }
+      f.position = pos;
+    });
+
+    this.renderFields();
+    this.onChange(this.fields);
   }
 }
