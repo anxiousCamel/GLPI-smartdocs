@@ -138,6 +138,24 @@ As permissões são configuradas em **Administração → Perfis → SmartDocs**
 
 ---
 
+## Dados de teste (fixtures)
+
+Para testar o preenchimento de documentos com um cenário realista (frentes de
+caixa completas + balanças de setor, com fabricante/modelo/localização/grupo
+preenchidos), rode:
+
+```bash
+docker cp plugins/smartdocs/tools/seed-test-fixtures.php <container_glpi>:/tmp/seed-test-fixtures.php
+docker exec <container_glpi> php /tmp/seed-test-fixtures.php
+```
+
+Cria 20 conjuntos de PDV (CPU, monitor, impressora, nobreak, teclado, leitor,
+balança de checkout, gaveta), 20 balanças avulsas de setor e 5 balanças de
+tipos diferentes (conferência/pallet). É idempotente — pode rodar de novo sem
+duplicar. Detalhes e variáveis de ambiente de conexão no cabeçalho do arquivo.
+
+---
+
 ## Troubleshooting
 
 **Menu SmartDocs não aparece**

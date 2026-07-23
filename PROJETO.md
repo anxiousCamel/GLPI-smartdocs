@@ -1981,6 +1981,20 @@ Arquivos criados e validados (`php -l` sem erros):
 
 ---
 
+### 2026-07-23 — Editor avançado, ponte de grupos/slots (modelo RegCheck), dados de teste `[x]`
+
+**Ver detalhamento técnico completo no Apêndice 17.**
+
+- Editor visual do canvas (Konva): navegação com zoom/pan via CSS, seleção múltipla com marquise (window-level, corrige seleção "grudada" ao arrastar pra fora do canvas), copiar/colar (Ctrl+C/V), atalhos, badges visuais de grupo (G1/G2...) e dropdown de grupo no painel de Propriedades
+- Painéis Campos/Propriedades agora recolhíveis; grid de alinhamento com liga/desliga e snap (via `dragBoundFunc` do Konva); edição de fonte/tamanho/negrito/alinhamento por campo de texto (já consumido pelo `PdfGenerator`)
+- **Bug corrigido:** alça de redimensionar "voltava" ao soltar o mouse — conflito entre override manual de `x()/y()` no `dragmove` e o rastreamento interno do `Konva.DD`; resolvido com `dragBoundFunc`
+- **Ponte RegCheck:** `TemplateRepository::resolveSlots()` deriva `scope`/`slot_index` a partir do `group_label` do editor — destrava paginação, wizard por equipamento e geração de PDF sem migração de banco (ver Apêndice 17)
+- Wizard de preenchimento: abas por equipamento (G1/G2...) + aba "Campos Globais" isoladas corretamente; rótulos amigáveis (nunca mais "Campo 1008"); erro SQL de `glpi_locations.is_deleted` corrigido
+- Bug recorrente de CSS do GLPI (`.small` colapsa elementos de bloco para ~1 char) atingiu o editor e o wizard — documentado em memória de sessão para não repetir
+- Script `tools/seed-test-fixtures.php`: gera 185 ativos fictícios (20 frentes de caixa completas + 20 balanças de setor + 5 balanças de tipos diferentes) com fabricante/modelo/localização/grupo/estado, idempotente, conexão configurável por variável de ambiente
+
+---
+
 ## Apêndice 16 — Plano de Implementação: Fluxo Completo Criação → Populate → Preenchimento
 
 ### Inventário: O que já existe e funciona
@@ -2810,3 +2824,190 @@ O plano proposto identifica corretamente os dois pontos centrais (`showForm()` a
 - **Double redirect** eliminado via redirect direto para `fill.php` — melhora UX
 - **Passagem de `$options['template_options']`** — evita query duplicada entre front e model
 - **Aviso de escopo de entidade** em `findPublished()` — bug silencioso pré-existente, corrigido na implementação (não apenas documentado como "fix futuro")
+
+---
+
+## Apêndice 17 — Editor Visual Avançado, Ponte de Grupos/Slots (Modelo RegCheck) e Dados de Teste
+
+### Contexto
+
+Sessão de continuação focada em três frentes pedidas pelo usuário: (1) tornar o
+editor de canvas mais produtivo (navegação, seleção, grid, fonte), (2) fazer o
+template/documento PDF se comportar como o produto de referência RegCheck
+(`C:\Users\luiz.belmonte\Desktop\Dev\RegCheck`) — divisão por grupos de
+equipamento, aba de campos globais, duplicação de páginas — e (3) gerar dados
+de teste realistas para validar tudo ponta a ponta.
+
+### Parte 1 — Editor visual do canvas (`js-src/editor/`)
+
+| Funcionalidade | Arquivo | Detalhe |
+|---|---|---|
+| Zoom/pan via CSS | `index.js` (`initZoomPan`) | `#page-stage` recebe `transform: scale(N)`; PDF (pdf.js) e Konva ficam em elementos DOM separados — só escalar o Konva desalinhava tudo, por isso o wrapper CSS compartilhado |
+| Pan | `index.js` | Botão direito + arrastar (sem exigir Ctrl no scroll, a pedido do usuário — "só uma mão"); `auxclick` suprime o menu de contexto durante o drag |
+| Seleção múltipla | `CanvasEditor.js` (`onMarqueeMove`/`onMarqueeEnd`) | Listeners em `window` (não no Konva) — corrige bug de a seleção "grudar"/pular quando o mouse sai da área do canvas durante o arrasto |
+| Grupos visuais (G1/G2...) | `CanvasEditor.js` (`getGroupIndexMap`, badge Konva.Label) | Índice estável por ordem alfabética do `group_label`; badge renderizado no canto do campo |
+| Dropdown de grupo | `PropertiesPanel.js` (`buildGroupOptions`) | Substituiu input de texto livre; "+ Criar novo grupo…" revela campo de nome |
+| Painéis recolhíveis | `index.js` (CSS `.editor-sidebar.collapsed`) | Botões `‹`/`›` no topo de Campos/Propriedades |
+| Grid com snap | `CanvasEditor.js` (`toggleGrid`, `renderGrid`, `snapToGrid`, `dragBoundFunc`) | Camada Konva própria abaixo dos campos; snap de 20px ao arrastar/redimensionar quando ativado |
+| Edição de fonte | `PropertiesPanel.js` (`renderFontControls`) | Fonte (Helvetica/Times/Courier), tamanho, negrito, alinhamento — grava em `field.config` no formato exato que `PdfGenerator::renderText()` já lia (`font_family`/`font_size`/`align`); **negrito era ignorado no backend, adicionado suporte** (`PdfGenerator.php:renderText`) |
+| Tooltip de Escopo | `PropertiesPanel.js` (`scopeTooltip`) | "Global"/"Por item" renomeados para "Compartilhado"/"Por equipamento" + ícone `ⓘ` com `title` explicando a diferença |
+
+**Bug corrigido — alça de redimensionar "resetava" ao soltar o mouse:**
+
+Causa raiz: dentro do handler `dragmove` da alça (`resizeHandle`), o código
+fazia `resizeHandle.x(newW); resizeHandle.y(newH);` para aplicar snap/limite
+manualmente. Isso conflita com o `Konva.DD` (sistema de drag interno do
+Konva), que também controla a posição do nó sendo arrastado a cada
+`mousemove` nativo do navegador. Ao soltar o botão, o Konva finaliza o drag
+usando seu próprio cálculo de posição (baseado no delta acumulado desde o
+`dragstart`), que diverge do valor forçado manualmente — a alça "voltava" e
+arrastava o tamanho salvo junto. Reproduzido de forma conclusiva chamando o
+handler `dragend` diretamente via `resizeHandle.eventListeners['dragend'][0].handler()`
+no console do navegador: a lógica de persistência (`updateFieldPosition`)
+estava correta isoladamente, mas nunca recebia o valor certo de `rect.width()`
+após um arrasto real.
+
+**Fix:** usar `resizeHandle.dragBoundFunc(pos => {...})` — a API correta do
+Konva para restringir/snapar posição durante um arrasto sem que o app e o
+Konva disputem a mesma propriedade. O `dragmove` só lê a posição já
+restringida; nunca mais escreve nela.
+
+**Bug corrigido — painel de Propriedades ficava desatualizado após resize no canvas:**
+
+Ao redimensionar um campo arrastando a alça, os inputs de X/Y/Largura/Altura
+do painel de Propriedades não eram atualizados. Se o usuário editasse
+qualquer outra propriedade do mesmo campo logo em seguida (Label, Grupo...),
+o `emitUpdate()` reconstruía a posição a partir dos valores (desatualizados)
+ainda nos inputs, sobrescrevendo o tamanho recém-ajustado. **Fix:**
+`PropertiesPanel.syncPosition()`, chamado a cada `onFieldsChange` em
+`index.js` quando há exatamente 1 campo selecionado, atualiza os inputs sem
+re-renderizar o painel inteiro (preserva foco caso o usuário esteja digitando
+em outro campo).
+
+### Parte 2 — Ponte de Grupos/Slots (modelo RegCheck)
+
+**Diagnóstico:** o motor de geração de PDF (`PdfEngine/FieldCloner.php`,
+`Templates/TemplatePaginator.php`) e o wizard de preenchimento
+(`WizardApp.js`, `FieldRenderer.js`) **já implementavam** o modelo de
+paginação do RegCheck — `scope` ('item'|'global') + `slot_index` (0..N-1) por
+campo, `itemsPerPage` = nº de slots distintos, `totalPages = ceil(totalItems / itemsPerPage)`.
+Porém o editor visual só grava `group_label` (nome livre do grupo, ex: "Grupo
+1"); nunca escreve `scope`/`slot_index`. Resultado: todos os campos ficavam
+com `scope='global'`, `slot_index=NULL`, e o wizard não conseguia separar por
+equipamento — apesar do motor de paginação estar pronto.
+
+**Fix (ponte central):** `TemplateRepository::resolveSlots()`, chamado
+internamente por `getFields()`. Coleta os `group_label` distintos, ordena com
+`SORT_STRING` (mesma ordenação lexicográfica que o editor usa para numerar
+G1/G2 no canvas), e mapeia cada grupo para um `slot_index` 0..N-1; campo
+agrupado → `scope='item'`; campo sem grupo → `scope='global'`,
+`slot_index=null`.
+
+Como **todo** consumidor de campos (wizard `fill.php`, geração de PDF via
+`PdfQueue`→`FieldCloner`, `DocumentService::populate`) passa por
+`getFields()`, esta única mudança destrava o pipeline inteiro sem migração de
+banco.
+
+**Outros bugs corrigidos no mesmo fluxo:**
+
+| # | Bug | Arquivo | Fix |
+|---|---|---|---|
+| 1 | `SQL Error 1054: Unknown column 'is_deleted'` ao carregar localizações | `front/pdfdocument.fill.php` | `glpi_locations` não tem essa coluna no schema padrão do GLPI — filtro removido |
+| 2 | Campos exibiam `"Campo " + ID` (ex: "Campo 1008") no wizard | `js-src/wizard/FieldRenderer.js` (`resolveLabel`) | Resolução em cascata: `field.label` → `field.config.label` → dicionário de binding key (`eq.name` → "Nome do Equipamento" etc.) → rótulo por tipo de campo |
+| 3 | `field.config`/`field.position` chegavam como string JSON no JS (esperava objeto) | `front/pdfdocument.fill.php` | `json_decode()` explícito no enriquecimento dos campos antes de injetar no `wizardData` |
+| 4 | Bug de CSS `.small` do GLPI colapsando o cabeçalho do wizard (texto vertical, 1 char por linha) | `js-src/wizard/WizardApp.js` | Override escopado `.smartdocs-wizard .small { width: auto !important; }` injetado no `render()` |
+| 5 | Bundle do wizard cacheado agressivamente pelo navegador | `front/pdfdocument.fill.php` | Cache-busting via `?v=<filemtime>`, igual ao já usado no editor |
+
+**Validado no navegador** (documento de teste, template com 2 grupos): abas
+"Equipamento 1 (Grupo 1)", "Equipamento 2 (Grupo 2)", "Campos Globais"
+renderizam corretamente; isolamento confirmado (aba Global mostra só os 7
+campos globais; Equipamento 2 mostra só os 19 inputs do seu slot); rótulos
+amigáveis e badges de binding key aparecem sem nenhum ID bruto.
+
+**Confirmado por leitura de código (não exercitado no navegador por falta de
+localizações/ativos cadastrados no momento — resolvido depois com os fixtures
+da Parte 3):**
+
+- Duplicação de páginas: `PdfGenerator::generate()` calcula
+  `totalOutputPages = max(páginasBase, maxComputedPageIndex+1)` e importa
+  páginas ciclicamente via `importPage()` — a quantidade de slots por página é
+  derivada do template, não fixa (requisito explícito do usuário: "cada
+  template pode ser diferente")
+- Não misturar setores: `DocumentService::padByLocation()` preenche o resto
+  da última página de cada localização com slots vazios antes de começar a
+  próxima, garantindo que equipamentos de setores diferentes nunca dividam a
+  mesma folha
+
+**Limitação identificada (não corrigida ainda):** o filtro de "Repetição em
+Grade" (`populate-document.php` → `DocumentService::populate`) seleciona por
+`itemtype` (Computer/Peripheral/...) + localização, mas não distingue
+subtipo de periférico (`peripheraltypes_id`). Num ambiente onde a mesma
+localização tem múltiplos tipos de periférico (ex: um checkout com nobreak +
+teclado + leitor + balança + gaveta, todos `itemtype=Peripheral`), popular por
+`Peripheral + <localização>` traria os 5 misturados. Não é um problema para
+os setores de estoque avulsos (só têm "Balança de Setor" lá), mas seria
+necessário um filtro adicional por `peripheraltypes_id` para popular
+seletivamente em ambientes mistos como o de checkout.
+
+### Parte 3 — Dados de teste (`tools/seed-test-fixtures.php`)
+
+Script PHP standalone (roda via `php` direto, sem bootstrap do GLPI — conecta
+via `mysqli`) que gera um cenário completo de varejo:
+
+- **20 frentes de caixa completas** (`Checkout 01`..`20`, localização em
+  árvore sob `Frente de Caixa`): CPU (Dell) + Monitor (LG) + Impressora
+  térmica (Elgin) + Nobreak (SMS/APC alternado) + Teclado (Gertec) + Leitor de
+  código de barras (Honeywell/Gertec alternado) + Balança de checkout
+  (Toledo do Brasil/Filizola alternado) + Gaveta de dinheiro (Elgin) — 160
+  ativos
+- **20 balanças avulsas de setor** — 5 em cada: Estoque Geral, Câmara Fria,
+  Recebimento, Expedição
+- **5 balanças de setor de tipos diferentes** — 3 "Balança de Conferência"
+  (Urano) em Conferência + 2 "Balança de Pallet" (Urano) em Paletização
+- Estrutura de apoio: 27 localizações, 26 grupos GLPI (1 por checkout + 1 por
+  setor), 13 fabricantes, 8 tipos de periférico, ~16 modelos, 2 estados
+- Seriais únicos por categoria (`PDV-CPU-0001`...), patrimônio (`otherserial`)
+  em sequência global (`PAT-000001`...)
+
+**Por que isso testa o sistema "à prova de bala":** `BindingKeyResolver`
+resolve dinamicamente qualquer campo do ativo GLPI (`eq.fabricante`,
+`eq.modelo`, `eq.grupo`, `eq.localizacao`, `eq.estado`) sem precisar de código
+adicional — bastava os dados existirem. Populando fabricante/modelo/grupo/
+localização/estado em todos os 185 itens (não só nome/serial), qualquer
+binding key configurada no template passa a ter dado real para testar.
+
+**Características do script:**
+
+- **Idempotente:** dropdowns localizados por nome; ativos localizados por
+  `serial` antes de inserir. Testado rodando duas vezes seguidas no banco já
+  populado — segunda execução reportou `criados: 0, pulados: 185`, sem
+  duplicar nada
+- **Conexão configurável:** variáveis de ambiente
+  `SMARTDOCS_SEED_DB_HOST`/`_USER`/`_PASS`/`_NAME` sobrescrevem os padrões
+  (`mariadb`/`root`/`glpiroot`/`glpi`, iguais ao `docker-compose.yml` deste
+  projeto) — permite rodar em outra máquina/ambiente sem editar o arquivo
+- **Bug corrigido durante o desenvolvimento:** o contador de patrimônio
+  (`nextPatrimonio()`) era chamado no literal do array de dados de cada
+  ativo, avaliado pelo PHP **antes** de `seedAsset()` verificar se o serial já
+  existia — em reexecuções, o contador avançava mesmo sem inserir nada
+  ("queimando" números da sequência). Corrigido movendo a chamada para dentro
+  de `seedAsset()`, só no caminho que efetivamente insere
+
+**Como rodar** (documentado no cabeçalho do arquivo e no `README.md` do
+plugin):
+
+```bash
+docker cp plugins/smartdocs/tools/seed-test-fixtures.php <container_glpi>:/tmp/seed-test-fixtures.php
+docker exec <container_glpi> php /tmp/seed-test-fixtures.php
+```
+
+### Memórias de sessão registradas
+
+Duas memórias persistentes foram salvas para não repetir investigação em
+sessões futuras:
+
+1. **Ponte grupo→slot** — resume o mecanismo do `resolveSlots()` e por que
+   centralizá-lo em `getFields()` resolve o pipeline inteiro
+2. **Bug de CSS `.small` do GLPI** — já atingiu o editor e o wizard; documenta
+   o fix (override escopado) e o gotcha relacionado de cache de bundle JS
+   (`?v=<filemtime>`)
